@@ -1,10 +1,10 @@
 {
-    "name": "My plugin",
+    "name": "Context Guardian & Enricher",
     "version": "0.0.1",
-    "description": "Description of my_plugin.",
-    "author_name": "Me",
-    "author_url": "https://mywebsite.me",
-    "plugin_url": "https://github.com/my_name/my_plugin",
-    "tags": "cat, template, example",
-    "thumb": "https://raw.githubusercontent.com/my_repo_path/my_plugin.png"
+    "description": "Ensuring responses stay within knowledge base while enriching messages with source links, UTM tracking, and panic button functionality.",
+    "author_name": "OpenCity Labs",
+    "author_url": "https://opencitylabs.it/",
+    "plugin_url": "https://github.com/my_name/context_guardian_enricher",
+    "tags": "memory, sources, metadata, context",
+    "thumb": "https://raw.githubusercontent.com/my_repo_path/context_guardian_enricher.png"
 }
