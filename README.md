@@ -20,8 +20,8 @@ The plugin provides four core functionalities:
 ## Features
 
 - Automatically rejects out-of-context queries that have no relevant information in the knowledge base and answer with a predefined message
-- Bypasse all the checks when users are in active form sessions
-- Emergency override that always returns a predefined maintenance message
+- Bypasse all the checks when users are in active form sessions and does not append any source when the `<no_sources>` tag is found in the message
+- Emergency override that always returns a predefined maintenance message (Panic Button)
 - Append relevant source URLs and titles to the `message.sources` parameter as a list `(url, title)`
 - Customizable UTM parameters to all outgoing links for analytics tracking to all URLs in the `message.text` other than the sources
 - Append current timestamp to user messages
