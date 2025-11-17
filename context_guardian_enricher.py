@@ -161,7 +161,7 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
     form_ongoing: bool = False
     if hasattr(cat.working_memory, 'active_form'):
         form_ongoing = cat.working_memory.active_form is not None
-    if form_ongoing in message.text:
+    if form_ongoing:
         log.debug("User is in a form session, skipping source enrichment")
         return message
     if "<no_sources>" in message.text:
