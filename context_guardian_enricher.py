@@ -74,6 +74,59 @@ def enrich_links_with_utm(text: str, utm_source: str = "") -> str:
     return re.sub(markdown_url_pattern, replace_url_in_markdown, text)
 
 @hook
+def cat_recall_query(user_message: str, cat: StrayCat) -> str:
+    """
+    Enhance memory search query by combining current message with recent conversation history.
+    This allows for better context understanding when searching for relevant memories.
+    
+    Args:
+        user_message: The current user message
+        cat: The StrayCat instance
+        
+    Returns:
+        Enhanced query string that includes conversation history context
+    """
+    settings: Dict[str, Any] = cat.mad_hatter.get_plugin().load_settings()
+    # Check if conversation history enhancement is enabled
+    use_conversation_history: bool = settings.get('use_conversation_history', True)
+    if not use_conversation_history:
+        return user_message
+    
+    # Get number of previous messages to include in context
+    history_length: int = settings.get('conversation_history_length', 3)
+    
+    # Build enhanced query with conversation history
+    enhanced_query_parts: List[str] = []
+    
+    # Add recent conversation history if available
+    if hasattr(cat.working_memory, 'history') and cat.working_memory.history:
+        # Get recent messages (excluding the current one which hasn't been added yet)
+        recent_messages = cat.working_memory.history[-history_length:] if len(cat.working_memory.history) >= history_length else cat.working_memory.history
+        
+        # Extract text from recent messages and add to context
+        for msg in recent_messages:
+            if hasattr(msg, 'text') and msg.text.strip():
+                # Clean up message text (remove timestamp info that was added in before_cat_reads_message)
+                clean_text = msg.text
+                if "\n\nCurrent time:" in clean_text:
+                    clean_text = clean_text.split("\n\nCurrent time:")[0]
+                enhanced_query_parts.append(clean_text.strip())
+    
+    # Add current message
+    enhanced_query_parts.append(user_message)
+    
+    # Combine all parts into enhanced query
+    enhanced_query: str = " ".join(enhanced_query_parts)
+    
+    # Limit query length to avoid embedding model limits
+    max_query_length: int = settings.get('max_query_length', 1000)
+    if len(enhanced_query) > max_query_length:
+        enhanced_query = enhanced_query[-max_query_length:]
+    
+    log.debug(f"Enhanced query for memory search: {enhanced_query[:200]}...")
+    return enhanced_query
+
+@hook
 def fast_reply(_: Dict[str, Any], cat: StrayCat) -> Optional[CatMessage]:
     """
     Early interception of user query to decide whether to proceed with RAG+LLM.
@@ -91,13 +144,17 @@ def fast_reply(_: Dict[str, Any], cat: StrayCat) -> Optional[CatMessage]:
     
     # Check if panic button is enabled - if so, return immediately with panic text
     if settings.get('panic_button_enabled', False):
-        cat.recall_relevant_memories_to_working_memory()
         return CatMessage(user_id=cat.user_id, text=settings.get('panic_button_text', "Sorry, I'm under maintenance right now. Please try again later."))
 
     # return default message if the length of the user query is less than minimum length
     min_query_length: int = settings.get('min_query_length', 10)
     user_query: str = cat.working_memory.user_message_json.text.strip()
     if len(user_query) < min_query_length:
+        return CatMessage(user_id=cat.user_id, text=settings.get('default_message', 'Sorry, I can\'t help you.'))
+    
+    # return default message if the length of the user query exceeds maximum length (if enabled)
+    max_query_len: int = settings.get('max_query_len', 500)
+    if max_query_len > 0 and len(user_query) > max_query_len:
         return CatMessage(user_id=cat.user_id, text=settings.get('default_message', 'Sorry, I can\'t help you.'))
 
     # Regular source enricher behavior

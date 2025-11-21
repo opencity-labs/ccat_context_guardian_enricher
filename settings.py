@@ -35,12 +35,41 @@ class ContextGuardianEnricherSettings(BaseModel):
         description="The text to return when panic button mode is enabled",
         extra={"type": "TextArea"}
     )
+    use_conversation_history: bool = Field(
+        title="Use Conversation History",
+        default=True,
+        description="Include recent conversation history when searching memories for better context understanding"
+    )
+    conversation_history_length: int = Field(
+        title="Conversation History Length",
+        default=3,
+        description="Number of previous messages to include in memory search context (0 to disable)",
+    )
+    max_query_length: int = Field(
+        title="Maximum Query Length",
+        default=1000,
+        description="Maximum length of the enhanced query string to avoid embedding model limits",
+    )
 
     @validator('min_query_length')
     def validate_min_query_length(cls, v):
         """Validate that min_query_length is non-negative"""
         if not v >= 0:
             raise ValueError('Minimum query length must be non-negative')
+        return v
+
+    @validator('conversation_history_length')
+    def validate_conversation_history_length(cls, v):
+        """Validate that conversation_history_length is within reasonable bounds"""
+        if not 0 <= v <= 10:
+            raise ValueError('Conversation history length must be between 0 and 10')
+        return v
+
+    @validator('max_query_length')
+    def validate_max_query_length(cls, v):
+        """Validate that max_query_length is within reasonable bounds"""
+        if not 100 <= v <= 5000:
+            raise ValueError('Maximum query length must be between 100 and 5000')
         return v
 
 
