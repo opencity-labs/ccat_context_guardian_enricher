@@ -49,29 +49,69 @@ def enrich_links_with_utm(text: str, utm_source: str = "") -> str:
     if not utm_source:  # Skip UTM tracking if utm_source is empty
         return text
     
-    # Step 1: Transform plain text URLs to markdown format [url](url)
-    # This regex matches URLs that are NOT already part of markdown links
-    # Uses negative lookbehind to avoid URLs preceded by ]( and \S+ to match any non-whitespace URL
-    plain_url_pattern: str = r'(?<!\]\()https?://\S+'
+    import uuid
     
-    def convert_to_markdown(match: re.Match[str]) -> str:
-        url: str = match.group(0)
-        return f'[{url}]({url})'
+    # Step 1: Find and temporarily replace all existing markdown links
+    markdown_links = {}
     
-    # Convert plain URLs to markdown format
-    text = re.sub(plain_url_pattern, convert_to_markdown, text)
+    def store_markdown_link(match: re.Match[str]) -> str:
+        link_text = match.group(1)
+        url = match.group(2)
+        enhanced_url = add_utm_tracking_to_url(url, utm_source)
+        placeholder = f"__MARKDOWN_LINK_{uuid.uuid4().hex}__"
+        markdown_links[placeholder] = f'[{link_text}]({enhanced_url})'
+        return placeholder
     
-    # Step 2: Add UTM tracking to URLs in markdown links
-    def replace_url_in_markdown(match: re.Match[str]) -> str:
-        url: str = match.group(0)
-        return add_utm_tracking_to_url(url, utm_source)
+    # Match markdown links with proper URL handling including parentheses
+    markdown_link_pattern = r'\[([^\]]*)\]\((https?://[^\s)]*(?:\([^)]*\)[^\s)]*)*[^\s)]*)\)'
+    text = re.sub(markdown_link_pattern, store_markdown_link, text)
     
-    # This regex matches URLs inside markdown links (within parentheses after ])
-    # Uses lookbehind (?<=\]\() and lookahead (?=\)) to ensure we're inside markdown link parentheses
-    # [^)]+ matches any character except ) which is perfect since we're bounded by the assertions
-    markdown_url_pattern: str = r'(?<=\]\()https?://[^)]+(?=\))'
+    # Step 2: Process plain URLs with smart naming
+    def convert_plain_url_to_markdown(match: re.Match[str]) -> str:
+        url = match.group(0)
+        
+        # Clean trailing punctuation
+        while url and url[-1] in '.,!?;':
+            url = url[:-1]
+        
+        # Add UTM tracking to the URL
+        enhanced_url = add_utm_tracking_to_url(url, utm_source)
+        
+        # Generate name from URL using the new logic
+        # Remove query parameters and fragments for name generation
+        base_url = url.split('?')[0].split('#')[0]
+        url_parts = base_url.rstrip('/').split('/')
+        
+        # Get the last part of the URL path for the name (the page/section name)
+        if len(url_parts) > 3 and url_parts[-1]:  # Has a meaningful path after domain
+            name = url_parts[-1]
+        elif len(url_parts) > 4 and url_parts[-2]:  # Fallback to second-to-last if last is empty
+            name = url_parts[-2]
+        else:
+            # Fallback to domain name if path is too short
+            name = url_parts[2] if len(url_parts) > 2 else url
+        
+        # Clean up the name: replace underscores and hyphens with spaces
+        name = name.replace('_', ' ').replace('-', ' ')
+        
+        # Capitalize first letter of each word
+        name = ' '.join(word.capitalize() for word in name.split())
+        
+        # If name is empty or too short, use the full URL
+        if not name or len(name) < 3:
+            name = enhanced_url
+        
+        return f'[{name}]({enhanced_url})'
     
-    return re.sub(markdown_url_pattern, replace_url_in_markdown, text)
+    # Match plain URLs that are not placeholders
+    plain_url_pattern = r'https?://[^\s]*(?:\([^)]*\)[^\s]*)*[^\s]*'
+    text = re.sub(plain_url_pattern, convert_plain_url_to_markdown, text)
+    
+    # Step 3: Restore the processed markdown links
+    for placeholder, link in markdown_links.items():
+        text = text.replace(placeholder, link)
+    
+    return text
 
 @hook
 def cat_recall_query(user_message: str, cat: StrayCat) -> str:
