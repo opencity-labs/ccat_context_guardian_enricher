@@ -13,7 +13,7 @@ Intelligently guard your AI conversations by ensuring responses stay within your
 
 The plugin provides five core functionalities:
 1. **Context Guardian**: Rejects queries that have no relevant context in the declarative memory
-2. **Source Enricher**: Automatically appends sources to responses with optional UTM tracking to ALL the links
+2. **Source Enricher**: Automatically appends sources to responses with optional UTM tracking to ALL the links, ensuring each unique label appears only once in the sources list
 3. **Conversation History Context**: Uses recent conversation history to improve memory search accuracy
 4. **Panic Button**: Emergency mode that always returns a predefined message regardless of context
 5. **Time Awareness**: Adds current timestamp to user messages for temporal context
@@ -54,6 +54,8 @@ The plugin provides five core functionalities:
 - **`conversation_history_length`**: *(Integer, default: 3)* - Number of previous messages to include in memory search context. Set to 0 to disable conversation history. Range: 0-10 messages. This helps the system understand contextual queries like "explain better" or "what about that topic" by referencing previous conversation turns.
 
 - **`max_query_length`**: *(Integer, default: 1000)* - Maximum length of the enhanced query string (including conversation history) to avoid embedding model limits. Range: 100-5000 characters. If the combined query exceeds this length, it will be truncated from the beginning.
+
+- **`remove_inline_links_from_sources`**: *(Boolean, default: False)* - When enabled, removes from the sources list any URL that appears in the message text itself. This is useful when the AI response includes inline references like "more information here: [url]" and you don't want those URLs duplicated in the sources list. Additionally, this setting deduplicates sources by label, keeping only one source per unique label to avoid redundant entries.
 
 ## Technical Details
 

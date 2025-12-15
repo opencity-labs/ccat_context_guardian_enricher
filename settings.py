@@ -50,6 +50,16 @@ class ContextGuardianEnricherSettings(BaseModel):
         default=1000,
         description="Maximum length of the enhanced query string to avoid embedding model limits",
     )
+    max_query_len: int = Field(
+        title="Maximum User Query Length",
+        default=500,
+        description="Maximum number of characters allowed in a user query. Set to 0 to disable this check.",
+    )
+    remove_inline_links_from_sources: bool = Field(
+        title="Remove Inline Links from Sources",
+        default=False,
+        description="If enabled, removes from sources any URL that appears in the message text itself"
+    )
 
     @validator('min_query_length')
     def validate_min_query_length(cls, v):

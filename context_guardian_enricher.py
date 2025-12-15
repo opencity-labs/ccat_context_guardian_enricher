@@ -298,7 +298,50 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
         # Single pass: use all sources from main pass
         relevant_sources: List[Dict[str, str]] = sources
 
-    message.sources = [{"url": add_utm_tracking_to_url(s['url'], utm_source), "label": s['label'].split("/")[0]} for s in relevant_sources] if relevant_sources else []
+    # Extract URLs from message text if remove_inline_links_from_sources is enabled
+    inline_urls: Set[str] = set()
+    if settings.get('remove_inline_links_from_sources', False):
+        # Find all URLs in the message text (both plain and markdown)
+        # Match markdown links [text](url)
+        markdown_urls = re.findall(r'\[([^\]]*)\]\((https?://[^\s)]+)\)', message.text)
+        inline_urls.update(url for _, url in markdown_urls)
+        
+        # Match plain URLs
+        plain_urls = re.findall(r'https?://[^\s<>\[\]()]+', message.text)
+        inline_urls.update(plain_urls)
+        
+        # Clean trailing punctuation from URLs
+        cleaned_inline_urls: Set[str] = set()
+        for url in inline_urls:
+            while url and url[-1] in '.,!?;':
+                url = url[:-1]
+            cleaned_inline_urls.add(url)
+        inline_urls = cleaned_inline_urls
+
+    # Filter sources and add UTM tracking
+    processed_sources: List[Dict[str, str]] = []
+    for s in relevant_sources:
+        source_url = s['url']
+        # Skip if URL appears in message text
+        if inline_urls and source_url in inline_urls:
+            continue
+        processed_sources.append({
+            "url": add_utm_tracking_to_url(source_url, utm_source), 
+            "label": s['label'].split("/")[0]
+        })
+    
+    # Deduplicate by label - keep only first occurrence of each unique label
+    seen_labels: Set[str] = set()
+    unique_sources: List[Dict[str, str]] = []
+    for source in processed_sources:
+        label = source['label']
+        if label and label not in seen_labels:
+            seen_labels.add(label)
+            unique_sources.append(source)
+        elif not label:  # Keep sources without labels
+            unique_sources.append(source)
+    
+    message.sources = unique_sources
 
     # Add UTM tracking to all links in the final message
     message.text = enrich_links_with_utm(message.text, utm_source)
