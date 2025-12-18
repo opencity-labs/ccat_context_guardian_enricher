@@ -57,6 +57,8 @@ The plugin provides five core functionalities:
 
 - **`remove_inline_links_from_sources`**: *(Boolean, default: False)* - When enabled, removes from the sources list any URL that appears in the message text itself. This is useful when the AI response includes inline references like "more information here: [url]" and you don't want those URLs duplicated in the sources list. Additionally, this setting deduplicates sources by label, keeping only one source per unique label to avoid redundant entries.
 
+- **`suggestion_first`**: *(Boolean, default: False)* - If enabled, moves sources that appear in the message text to the top of the sources list. This is useful to prioritize sources that are directly referenced in the AI's response.
+
 ## Technical Details
 
 ### Hooks Used

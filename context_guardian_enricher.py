@@ -1,6 +1,5 @@
 from typing import Any, Dict, List, Set, Tuple, Optional, Union
 from cat.mad_hatter.decorators import hook
-from cat.log import log
 from cat.looking_glass.stray_cat import StrayCat
 from cat.convo.messages import CatMessage
 import re
@@ -163,7 +162,6 @@ def cat_recall_query(user_message: str, cat: StrayCat) -> str:
     if len(enhanced_query) > max_query_length:
         enhanced_query = enhanced_query[-max_query_length:]
     
-    log.debug(f"Enhanced query for memory search: {enhanced_query[:200]}...")
     return enhanced_query
 
 @hook
@@ -252,10 +250,8 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
     if hasattr(cat.working_memory, 'active_form'):
         form_ongoing = cat.working_memory.active_form is not None
     if form_ongoing:
-        log.debug("User is in a form session, skipping source enrichment")
         return message
     if "<no_sources>" in message.text:
-        log.debug("No sources required.")
         message.text = message.text.replace("<no_sources>", "")
         return message
     
@@ -298,9 +294,12 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
         # Single pass: use all sources from main pass
         relevant_sources: List[Dict[str, str]] = sources
 
-    # Extract URLs from message text if remove_inline_links_from_sources is enabled
+    # Extract URLs from message text if remove_inline_links_from_sources or suggestion_first is enabled
     inline_urls: Set[str] = set()
-    if settings.get('remove_inline_links_from_sources', False):
+    remove_inline = settings.get('remove_inline_links_from_sources', False)
+    suggestion_first = settings.get('suggestion_first', False)
+
+    if remove_inline or suggestion_first:
         # Find all URLs in the message text (both plain and markdown)
         # Match markdown links [text](url)
         markdown_urls = re.findall(r'\[([^\]]*)\]\((https?://[^\s)]+)\)', message.text)
@@ -320,15 +319,28 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
 
     # Filter sources and add UTM tracking
     processed_sources: List[Dict[str, str]] = []
+    prioritized_sources: List[Dict[str, str]] = []
+
     for s in relevant_sources:
         source_url = s['url']
-        # Skip if URL appears in message text
-        if inline_urls and source_url in inline_urls:
+        is_inline = source_url in inline_urls
+
+        # Skip if URL appears in message text and remove_inline is enabled
+        if is_inline and remove_inline:
             continue
-        processed_sources.append({
+        
+        processed_source = {
             "url": add_utm_tracking_to_url(source_url, utm_source), 
             "label": s['label'].split("/")[0]
-        })
+        }
+
+        if is_inline and suggestion_first:
+            prioritized_sources.append(processed_source)
+        else:
+            processed_sources.append(processed_source)
+
+    if suggestion_first:
+        processed_sources = prioritized_sources + processed_sources
     
     # Deduplicate by label - keep only first occurrence of each unique label
     seen_labels: Set[str] = set()

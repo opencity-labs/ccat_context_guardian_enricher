@@ -60,6 +60,11 @@ class ContextGuardianEnricherSettings(BaseModel):
         default=False,
         description="If enabled, removes from sources any URL that appears in the message text itself"
     )
+    suggestion_first: bool = Field(
+        title="Prioritize Inline Links in Sources",
+        default=False,
+        description="If enabled, moves sources that appear in the message text to the top of the sources list"
+    )
 
     @validator('min_query_length')
     def validate_min_query_length(cls, v):
