@@ -68,9 +68,17 @@ def enrich_links_with_utm(text: str, utm_source: str = "") -> str:
     # Step 2: Process plain URLs with smart naming
     def convert_plain_url_to_markdown(match: re.Match[str]) -> str:
         url = match.group(0)
+        suffix = ""
         
         # Clean trailing punctuation
         while url and url[-1] in '.,!?;':
+            suffix = url[-1] + suffix
+            url = url[:-1]
+            
+        # Handle parentheses: if the URL ends with ')' and has unbalanced parentheses,
+        # assume the last ')' is part of the surrounding text, not the URL.
+        while url.endswith(')') and url.count('(') < url.count(')'):
+            suffix = url[-1] + suffix
             url = url[:-1]
         
         # Add UTM tracking to the URL
@@ -100,7 +108,7 @@ def enrich_links_with_utm(text: str, utm_source: str = "") -> str:
         if not name or len(name) < 3:
             name = enhanced_url
         
-        return f'[{name}]({enhanced_url})'
+        return f'[{name}]({enhanced_url}){suffix}'
     
     # Match plain URLs that are not placeholders
     plain_url_pattern = r'https?://[^\s]*(?:\([^)]*\)[^\s]*)*[^\s]*'
