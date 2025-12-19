@@ -266,7 +266,7 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
         source: Optional[str] = doc.metadata.get('source')
         title: Optional[str] = doc.metadata.get('title')  # Page title is available here for web pages
         if source and source not in seen_sources:
-            sources.append({"url": source, "label": title or ""})
+            sources.append({"url": source, "label": title or "", "length": len(doc.page_content)})
             seen_sources.add(source)
 
     if settings.get('double_pass', False):
@@ -282,7 +282,7 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
             source: Optional[str] = doc.metadata.get('source')
             title: Optional[str] = doc.metadata.get('title')
             if source and source not in seen_second_sources:
-                second_sources.append({"url": source, "label": title or ""})
+                second_sources.append({"url": source, "label": title or "", "length": len(doc.page_content)})
                 seen_second_sources.add(source)
 
         # Find intersection while preserving order from main sources
@@ -293,6 +293,10 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
     else:
         # Single pass: use all sources from main pass
         relevant_sources: List[Dict[str, str]] = sources
+
+    # Filter sources by content length
+    min_source_char = settings.get('min_source_char', 100)
+    relevant_sources = [s for s in relevant_sources if s.get('length', 0) >= min_source_char]
 
     # Extract URLs from message text if remove_inline_links_from_sources or suggestion_first is enabled
     inline_urls: Set[str] = set()

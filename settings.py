@@ -55,6 +55,11 @@ class ContextGuardianEnricherSettings(BaseModel):
         default=500,
         description="Maximum number of characters allowed in a user query. Set to 0 to disable this check.",
     )
+    min_source_char: int = Field(
+        title="Minimum Source Characters",
+        default=100,
+        description="Minimum number of characters a source content must have to be included in the sources list",
+    )
     remove_inline_links_from_sources: bool = Field(
         title="Remove Inline Links from Sources",
         default=False,
@@ -85,6 +90,13 @@ class ContextGuardianEnricherSettings(BaseModel):
         """Validate that max_query_length is within reasonable bounds"""
         if not 100 <= v <= 5000:
             raise ValueError('Maximum query length must be between 100 and 5000')
+        return v
+
+    @validator('min_source_char')
+    def validate_min_source_char(cls, v):
+        """Validate that min_source_char is non-negative"""
+        if not v >= 0:
+            raise ValueError('Minimum source characters must be non-negative')
         return v
 
 
