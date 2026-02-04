@@ -240,6 +240,41 @@ def before_cat_reads_message(user_message_json: Dict[str, Any], cat: StrayCat) -
     return user_message_json
 
 
+@hook(priority=0)
+def agent_prompt_prefix(prefix: str, cat: StrayCat) -> str:
+    """
+    Hook to modify the system prompt prefix.
+    Replaces $BROWSER_LANG with the actual browser language.
+    """
+    user_message = cat.working_memory.user_message_json
+    info = getattr(user_message, "info", {})
+    
+    # Default to ENGLISH if not present or empty
+    browser_lang = "ENGLISH"
+    if isinstance(info, dict) and info.get("browser_language"):
+        # Dictionary to map common language codes to full language names
+        lang_map = {
+            "en": "ENGLISH",
+            "es": "SPANISH",
+            "fr": "FRENCH",
+            "de": "GERMAN",
+            "it": "ITALIAN",
+            "pt": "PORTUGUESE",
+            "zh": "CHINESE",
+            "ja": "JAPANESE",
+            "ko": "KOREAN",
+            "ru": "RUSSIAN",
+            "ar": "ARABIC",
+            "hi": "HINDI",
+        }
+
+        # Normalize stuff like en-US to en
+        lang_code = info.get("browser_language").split("-")[0].lower()
+        browser_lang = lang_map.get(lang_code, browser_lang.upper())
+        
+    return prefix.replace("$BROWSER_LANG", browser_lang)
+
+
 @hook
 def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
     """

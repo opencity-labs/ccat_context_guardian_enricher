@@ -11,12 +11,13 @@ Intelligently guard your AI conversations by ensuring responses stay within your
 
 **Context Guardian & Enricher** is a plugin for Cheshire Cat AI that ensures that the AI only responds to queries that have relevant context in the knowledge base, while automatically enriching responses with source citations and UTM tracking for analytics.
 
-The plugin provides five core functionalities:
+The plugin provides these core functionalities:
 1. **Context Guardian**: Rejects queries that have no relevant context in the declarative memory
 2. **Source Enricher**: Automatically appends sources to responses with optional UTM tracking to ALL the links, ensuring each unique label appears only once in the sources list
 3. **Conversation History Context**: Uses recent conversation history to improve memory search accuracy
 4. **Panic Button**: Emergency mode that always returns a predefined message regardless of context
 5. **Time Awareness**: Adds current timestamp to user messages for temporal context
+6. **Browser Language Detection**: Automatically detects the user's browser language for personalized responses
 
 ## Features
 
@@ -27,6 +28,7 @@ The plugin provides five core functionalities:
 - Append relevant source URLs and titles to the `message.sources` parameter as a list `(url, title)`
 - Customizable UTM parameters to all outgoing links for analytics tracking to all URLs in the `message.text` other than the sources
 - Append current timestamp to user messages
+- **Browser Language Detection**: Automatically detects the user's browser language and incorporates it into the system prompt for more personalized responses
 
 ## Requirements
 
@@ -68,6 +70,7 @@ The plugin provides five core functionalities:
 - **`cat_recall_query`**: Enhances memory search queries by combining current message with conversation history for better contextual understanding
 - **`fast_reply`**: Intercepts queries early to check for relevant context before engaging the LLM
 - **`before_cat_reads_message`**: Adds current timestamp to user messages
+- **`agent_prompt_prefix`**: Incorporates browser language detection into the system prompt
 - **`before_cat_sends_message`**: Enriches outgoing messages with sources and UTM tracking
 
 ---
