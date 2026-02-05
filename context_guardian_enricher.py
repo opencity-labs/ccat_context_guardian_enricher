@@ -174,8 +174,8 @@ def cat_recall_query(user_message: str, cat: StrayCat) -> str:
 
 def _get_browser_lang_code_from_info(info: Any) -> str:
     """Extract the two-letter browser language code from `info` if present."""
-    if isinstance(info, dict) and info.get("browser_language"):
-        return info.get("browser_language").split("-")[0].lower()
+    if isinstance(info, dict) and info.get("browser_lang"):
+        return info.get("browser_lang").split("-")[0].lower()
     return ""
 
 
@@ -299,6 +299,7 @@ def before_cat_reads_message(user_message_json: Dict[str, Any], cat: StrayCat) -
     from datetime import datetime
     current_time: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     user_message_json.text += f"\n\ncurrent time: {current_time}"
+
     return user_message_json
 
 
@@ -313,7 +314,7 @@ def agent_prompt_prefix(prefix: str, cat: StrayCat) -> str:
     
     # Default to ENGLISH if not present or empty
     browser_lang = "ENGLISH"
-    if isinstance(info, dict) and info.get("browser_language"):
+    if isinstance(info, dict) and info.get("browser_lang"):
         # Dictionary to map common language codes to full language names
         lang_map = {
             "en": "ENGLISH",
@@ -331,7 +332,7 @@ def agent_prompt_prefix(prefix: str, cat: StrayCat) -> str:
         }
 
         # Normalize stuff like en-US to en
-        lang_code = info.get("browser_language").split("-")[0].lower()
+        lang_code = info.get("browser_lang").split("-")[0].lower()
         browser_lang = lang_map.get(lang_code, browser_lang.upper())
         
     return prefix.replace("$BROWSER_LANG", browser_lang)
@@ -466,4 +467,5 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
 
     # Add UTM tracking to all links in the final message
     message.text = enrich_links_with_utm(message.text, utm_source)
+
     return message
