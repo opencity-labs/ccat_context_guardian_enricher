@@ -17,6 +17,9 @@ def add_utm_tracking_to_url(url: str, utm_source: str) -> str:
     Returns:
         The URL with UTM tracking added (if applicable)
     """
+    
+    # Remove (offset)/X pattern from url
+    url = re.sub(r'/\(offset\)/\d+', '', url)
 
     if not utm_source:  # Skip UTM tracking if utm_source is empty
         return url
