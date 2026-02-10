@@ -74,15 +74,17 @@ def translate_text(text_to_translate: str, reference_text: str, cat: Any) -> str
     api_key = settings.get('google_api_key', '')
 
     # 2. Prepare Prompt
-    prompt = f"""You are a helpful translator.
+    prompt = f"""Behave like a helpful translator.
 I will provide you with a reference text and a text to translate.
-Your goal is to translate the "Text to translate" into the same language as the "Reference text".
+Your goal is:
+1. if the two languages are already the same, return the text to translate;
+2. if the two languages are different, translate the "Text to translate" into the same language as the "Reference text".
 
 Reference text: "{reference_text}"
 
 Text to translate: "{text_to_translate}"
 
-Only output the translated text, nothing else. Do not add explanations."""
+Only output the translated text between <|startoftext|> and <|endoftext|>, nothing else. Do not add explanations."""
 
     # 3. Call Gemini API (if key exists)
     if api_key:
@@ -139,17 +141,20 @@ Only output the translated text, nothing else. Do not add explanations."""
                 if "candidates" in data and data["candidates"]:
                     content = data["candidates"][0]["content"]
                     parts = content.get("parts", [])
-                    translated_text = "".join([p.get("text", "") for p in parts]).strip()
+                    raw_text = "".join([p.get("text", "") for p in parts]).strip()
+                    
+                    # Parse the translated text between <|startoftext|> and <|endoftext|>
+                    start_tag = "<|startoftext|>"
+                    end_tag = "<|endoftext|>"
+                    if start_tag in raw_text and end_tag in raw_text:
+                        start_idx = raw_text.find(start_tag) + len(start_tag)
+                        end_idx = raw_text.find(end_tag)
+                        translated_text = raw_text[start_idx:end_idx].strip()
+                    else:
+                        log.warning(f"Translation response does not contain expected tags. Raw response: {raw_text}")
+                        translated_text = text_to_translate  # Fallback to original if format is unexpected
                     
                     log.info(f"Translation successful with {model_name}. Input length: {len(text_to_translate)}, Output length: {len(translated_text)}")
-                    
-                    # Store usage in cat instance (transient) for analytics to pick up
-                    if not hasattr(cat, "translation_usage"):
-                        cat.translation_usage = {"input": 0, "output": 0}
-                    
-                    cat.translation_usage["input"] += input_tokens
-                    cat.translation_usage["output"] += output_tokens
-                    # log.info(f"[Language Guardian] Stored translation usage in cat: {cat.translation_usage}")
                     
                     return translated_text
                 

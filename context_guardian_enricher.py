@@ -6,7 +6,6 @@ from cat.log import log
 import re
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, ParseResult
 from datetime import datetime
-from threading import Thread
 from .audio_guardian import handle_audio_transcription
 from .language_guardian import is_same_language, translate_text
 
@@ -314,7 +313,6 @@ def before_cat_reads_message(user_message_json: Dict[str, Any], cat: StrayCat) -
             log.warning("Audio transcription failed or returned empty.")
 
     # append "current time" to user message
-    from datetime import datetime
     current_time: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     user_message_json.text += f"\n\ncurrent time: {current_time}"
 
