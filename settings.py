@@ -70,6 +70,12 @@ class ContextGuardianEnricherSettings(BaseModel):
         default=False,
         description="If enabled, moves sources that appear in the message text to the top of the sources list"
     )
+    google_api_key: str = Field(
+        title="Google API Key",
+        default="",
+        description="API Key for Gemini API (Audio STT)",
+        extra={"type": "Password"}
+    )
 
     @validator('min_query_length')
     def validate_min_query_length(cls, v):

@@ -1,9 +1,14 @@
-from typing import Any, Dict, List, Set, Tuple, Optional, Union
+from typing import Any, Dict, List, Set, Optional
 from cat.mad_hatter.decorators import hook
 from cat.looking_glass.stray_cat import StrayCat
 from cat.convo.messages import CatMessage
+from cat.log import log
 import re
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, ParseResult
+from datetime import datetime
+from threading import Thread
+from .audio_guardian import handle_audio_transcription
+from .language_guardian import is_same_language, translate_text
 
 
 def add_utm_tracking_to_url(url: str, utm_source: str) -> str:
@@ -294,11 +299,20 @@ def before_cat_reads_message(user_message_json: Dict[str, Any], cat: StrayCat) -
     
     Args:
         user_message_json: The user message JSON object
-        _: The StrayCat instance (unused)
+        cat: The StrayCat instance
         
     Returns:
         Modified user message JSON object
     """
+    # handle audio message
+    if user_message_json.get('audio') is not None:
+        transcription = handle_audio_transcription(user_message_json.audio, cat)
+        if transcription:
+            user_message_json.text = transcription
+            log.info(f"Audio transcribed: {transcription}")
+        else:
+            log.warning("Audio transcription failed or returned empty.")
+
     # append "current time" to user message
     from datetime import datetime
     current_time: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -342,7 +356,7 @@ def agent_prompt_prefix(prefix: str, cat: StrayCat) -> str:
     return prefix.replace("$BROWSER_LANG", browser_lang)
 
 
-@hook
+@hook(priority=1)
 def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
     """
     Enrich the outgoing message with the sources used during the main (and optional double) pass.
@@ -354,6 +368,12 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
     Returns:
         The enriched CatMessage with sources and UTM tracking
     """
+    # Check if the user's message and bot's answer are in the same language
+    is_same_lang = is_same_language(cat.working_memory.user_message_json.text, message.text)
+
+    if not is_same_lang:
+        # log.info("Language mismatch detected. Translating response...")
+        message.text = translate_text(message.text, cat.working_memory.user_message_json.text, cat)
     
     # if form_ongoing: # skip rejection if user is in a form session
     form_ongoing: bool = False
