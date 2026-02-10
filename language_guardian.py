@@ -152,7 +152,7 @@ Only output the translated text between <|startoftext|> and <|endoftext|>, nothi
                         translated_text = raw_text[start_idx:end_idx].strip()
                     else:
                         log.warning(f"Translation response does not contain expected tags. Raw response: {raw_text}")
-                        translated_text = text_to_translate  # Fallback to original if format is unexpected
+                        translated_text = text_to_translate.split("current time")[0].strip()  # Fallback to original if format is unexpected
                     
                     log.info(f"Translation successful with {model_name}. Input length: {len(text_to_translate)}, Output length: {len(translated_text)}")
                     
