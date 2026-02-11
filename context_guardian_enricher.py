@@ -311,6 +311,8 @@ def before_cat_reads_message(user_message_json: Dict[str, Any], cat: StrayCat) -
             log.info(f"Audio transcribed: {transcription}")
         else:
             log.warning("Audio transcription failed or returned empty.")
+    else:
+        log.info("No audio content found in the message.")
 
     # append "current time" to user message
     current_time: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

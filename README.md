@@ -17,23 +17,31 @@ The plugin provides these core functionalities:
 3. **Conversation History Context**: Uses recent conversation history to improve memory search accuracy
 4. **Panic Button**: Emergency mode that always returns a predefined message regardless of context
 5. **Time Awareness**: Adds current timestamp to user messages for temporal context
-6. **Browser Language Detection**: Automatically detects the user's browser language for personalized responses
+6. **Language Guardian**: Automatically detects the user's browser language and translates incoming messages using Google Gemini to match the conversation context if needed.
+7. **Audio Guardian**: Converts audio messages to text using Google Gemini (STT) so the Cat can understand voice messages.
 
 ## Features
 
-- Automatically rejects out-of-context queries that have no relevant information in the knowledge base and answer with a predefined message
+- **Context Guardian**: Automatically rejects out-of-context queries that have no relevant information in the knowledge base and answer with a predefined message
+- **Language Guardian**: 
+  - Uses `spacy-language-detection` to identify the language of the user's message.
+  - Translates text using **Gemini 2.5 Flash Lite** (or 2.0 Flash Lite fallback) to ensure seamless communication even if the user switches languages.
+  - Automatically incorporates the user's browser language into the system prompt for personalized responses.
+- **Audio Guardian**:
+  - Transcribes audio messages using **Gemini 2.5 Flash**, allowing the Cat to "hear" and respond to voice inputs.
+  - Returns the transcription as a user message.
 - **Enhanced Memory Search**: Combines current message with recent conversation history for better context understanding (e.g., when user says "what about X" followed by "explain better", the system searches memory using both messages together)
 - Bypasse all the checks when users are in active form sessions and does not append any source when the `<no_sources>` tag is found in the message
 - Emergency override that always returns a predefined maintenance message (Panic Button)
 - Append relevant source URLs and titles to the `message.sources` parameter as a list `(url, title)`
 - Customizable UTM parameters to all outgoing links for analytics tracking to all URLs in the `message.text` other than the sources
 - Append current timestamp to user messages
-- **Browser Language Detection**: Automatically detects the user's browser language and incorporates it into the system prompt for more personalized responses
 
 ## Requirements
 
 - Cheshire Cat AI
 - Context Guardian & Enricher plugin enabled in Cheshire Cat AI
+- **Google API Key**: Required for Language Guardian (translation) and Audio Guardian (transcription).
 
 ## Settings
 
@@ -62,6 +70,39 @@ The plugin provides these core functionalities:
 - **`remove_inline_links_from_sources`**: *(Boolean, default: False)* - When enabled, removes from the sources list any URL that appears in the message text itself. This is useful when the AI response includes inline references like "more information here: [url]" and you don't want those URLs duplicated in the sources list. Additionally, this setting deduplicates sources by label, keeping only one source per unique label to avoid redundant entries.
 
 - **`suggestion_first`**: *(Boolean, default: False)* - If enabled, moves sources that appear in the message text to the top of the sources list. This is useful to prioritize sources that are directly referenced in the AI's response.
+
+- **`google_api_key`**: *(Password String, default: "")* - API Key for Google Gemini API. Required for Audio Guardian (STT) and Language Guardian (Translation).
+
+## Log Schema
+
+This plugin uses structured JSON logging to facilitate monitoring and debugging. All logs follow this base structure:
+
+```json
+{
+  "event": "<event_name>",
+  ... <event_specific_payload>
+}
+```
+
+### Event Types
+
+#### Audio Guardian (`audio_guardian.py`)
+| Event Name | Description |
+|------------|-------------|
+| `audio_transcription_error` | Occurs when there is an error during audio transcription (missing key, invalid format, API failure) |
+| `audio_transcription_warning` | Occurs when there is a warning, such as a missing API key or empty response |
+| `audio_transcription_api_response` | Logs the raw response text from the API on error |
+| `available_models` | Logs available Gemini models if the selected model is not found (404) |
+
+#### Language Guardian (`language_guardian.py`)
+| Event Name | Description |
+|------------|-------------|
+| `translation_success` | Occurs when a translation is successful, includes model name and character counts |
+| `translation_error` | Occurs when the translation API returns an error status code |
+| `translation_warning` | Occurs when the translation response is malformed or empty |
+| `translation_exception` | Occurs when an unhandled exception is raised during the translation process |
+| `translation_retry` | Occurs when the system falls back to a second model after a failure |
+| `translation_skipped` | Occurs when translation is bypassed (e.g., missing API key or same language) |
 
 ## Technical Details
 

@@ -3,6 +3,7 @@ from spacy.language import Language
 from spacy_language_detection import LanguageDetector
 from cat.log import log
 import requests
+import json
 from typing import Any
 
 
@@ -57,6 +58,7 @@ def is_same_language(text1: str, text2: str) -> bool:
     """
     lang1 = detect_language(text1)
     lang2 = detect_language(text2)
+    # log.warning(f"Detected languages - Text 1: {lang1['language']} (confidence: {lang1['score']}), Text 2: {lang2['language']} (confidence: {lang2['score']})")
     return lang1["language"] == lang2["language"]
 
 
@@ -115,27 +117,35 @@ Only output the translated text between <|startoftext|> and <|endoftext|>, nothi
                         pass
                     
                     # If not the specific high demand error, return original text
-                    log.error(f"Translation API error ({response.status_code}): {response.text}")
+                    log.error(json.dumps({
+                        "event": "translation_error",
+                        "status_code": response.status_code,
+                        "response": response.text
+                    }))
                     return text_to_translate
                 
                 if response.status_code != 200:
-                    log.error(f"Translation API error ({response.status_code}): {response.text}")
+                    log.error(json.dumps({
+                        "event": "translation_error",
+                        "status_code": response.status_code,
+                        "response": response.text
+                    }))
                     return text_to_translate
 
                 data = response.json()
                 
                 # Track Usage
-                if "usageMetadata" in data:
-                    usage = data["usageMetadata"]
-                    input_tokens = usage.get("promptTokenCount", 0)
-                    output_tokens = usage.get("candidatesTokenCount", 0)
+                # if "usageMetadata" in data:
+                #     usage = data["usageMetadata"]
+                #     input_tokens = usage.get("promptTokenCount", 0)
+                #     output_tokens = usage.get("candidatesTokenCount", 0)
                     
-                    # Store usage in cat instance (transient) for analytics to pick up
-                    if not hasattr(cat, "translation_usage"):
-                        cat.translation_usage = {"input": 0, "output": 0}
+                #     # Store usage in cat instance (transient) for analytics to pick up
+                #     if not hasattr(cat, "translation_usage"):
+                #         cat.translation_usage = {"input": 0, "output": 0}
                     
-                    cat.translation_usage["input"] += input_tokens
-                    cat.translation_usage["output"] += output_tokens
+                #     cat.translation_usage["input"] += input_tokens
+                #     cat.translation_usage["output"] += output_tokens
                 
                 # Extract Content
                 if "candidates" in data and data["candidates"]:
@@ -151,23 +161,46 @@ Only output the translated text between <|startoftext|> and <|endoftext|>, nothi
                         end_idx = raw_text.find(end_tag)
                         translated_text = raw_text[start_idx:end_idx].strip()
                     else:
-                        log.warning(f"Translation response does not contain expected tags. Raw response: {raw_text}")
+                        log.warning(json.dumps({
+                            "event": "translation_warning",
+                            "reason": "Response does not contain expected tags",
+                            "raw_response": raw_text
+                        }))
                         translated_text = text_to_translate.split("current time")[0].strip()  # Fallback to original if format is unexpected
                     
-                    log.info(f"Translation successful with {model_name}. Input length: {len(text_to_translate)}, Output length: {len(translated_text)}")
+                    log.info(json.dumps({
+                        "event": "translation_success",
+                        "model": model_name,
+                        "input_length": len(text_to_translate),
+                        "output_length": len(translated_text)
+                    }))
                     
                     return translated_text
                 
-                log.warning(f"Translation API returned no candidates. Response: {data}")
+                log.warning(json.dumps({
+                    "event": "translation_warning",
+                    "reason": "API returned no candidates",
+                    "response": data
+                }))
                 return text_to_translate
                 
             except Exception as e:
-                log.error(f"Translation exception with {model_name}: {e}")
+                log.error(json.dumps({
+                    "event": "translation_exception",
+                    "model": model_name,
+                    "error": str(e)
+                }))
                 if model_name == models_to_try[-1]:  # If this is the last model, return original
                     return text_to_translate
                 else:
-                    log.warning(f"Trying next model after exception with {model_name}...")
+                    log.warning(json.dumps({
+                        "event": "translation_retry",
+                        "reason": f"Exception with {model_name}, trying next model"
+                    }))
                     continue  # Try next model
 
-    log.warning("Skipping translation: No Google API Key found.")
+    log.warning(json.dumps({
+        "event": "translation_skipped",
+        "reason": "No Google API Key found"
+    }))
     return text_to_translate
