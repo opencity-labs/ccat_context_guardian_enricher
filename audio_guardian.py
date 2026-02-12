@@ -5,16 +5,17 @@ from typing import Any, Dict, Optional
 from cat.log import log
 from cat.convo.messages import CatMessage
 
-def transcribe_with_gemini(audio_data_uri: str, api_key: str) -> str:
+def transcribe_with_gemini(audio_data_uri: str, api_key: str) -> Dict[str, Any]:
     """
     Transcribe audio using Gemini API.
+    Returns a dict with 'text' and 'usage' keys.
     """
     if not api_key:
         log.error(json.dumps({
             "event": "audio_transcription_error",
             "reason": "Gemini API key not found in settings"
         }))
-        return ""
+        return {"text": "", "usage": None}
 
     match = re.match(r'data:(audio/[a-zA-Z0-9.-]+);base64,(.+)', audio_data_uri)
     if not match:
@@ -22,7 +23,7 @@ def transcribe_with_gemini(audio_data_uri: str, api_key: str) -> str:
             "event": "audio_transcription_error",
             "reason": "Invalid audio data URI format"
         }))
-        return ""
+        return {"text": "", "usage": None}
     
     mime_type = match.group(1)
     base64_data = match.group(2)
@@ -48,18 +49,20 @@ def transcribe_with_gemini(audio_data_uri: str, api_key: str) -> str:
         response.raise_for_status()
         result = response.json()
         
+        usage = result.get("usageMetadata")
+        
         if "candidates" in result and result["candidates"]:
             content = result["candidates"][0]["content"]
             parts = content.get("parts", [])
             text = "".join([p.get("text", "") for p in parts])
-            return text.strip()
+            return {"text": text.strip(), "usage": usage}
         else:
             log.error(json.dumps({
                 "event": "audio_transcription_error",
                 "reason": "Gemini API returned no candidates",
                 "api_result": result
             }))
-            return ""
+            return {"text": "", "usage": None}
             
     except Exception as e:
         log.error(json.dumps({
@@ -86,7 +89,7 @@ def transcribe_with_gemini(audio_data_uri: str, api_key: str) -> str:
                  except:
                      pass
 
-        return ""
+        return {"text": "", "usage": None}
 
 def handle_audio_transcription(audio_data_uri: str, cat: Any) -> Optional[str]:
     """
@@ -109,9 +112,28 @@ def handle_audio_transcription(audio_data_uri: str, cat: Any) -> Optional[str]:
         }))
         return None
 
-    transcription = transcribe_with_gemini(audio_data_uri, api_key)
+    result = transcribe_with_gemini(audio_data_uri, api_key)
+    transcription = result.get("text", "")
+    usage = result.get("usage")
+    
     if transcription:
-        # log.info(f"Audio transcribed: {transcription}")
+        # Log usage if available
+        if usage:
+            input_tokens = usage.get("promptTokenCount", 0)
+            output_tokens = usage.get("candidatesTokenCount", 0)
+            total_tokens = usage.get("totalTokenCount", 0)
+            log.info(json.dumps({
+                "event": "audio_transcription_success",
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": total_tokens
+            }))
+        else:
+            log.info(json.dumps({
+                "event": "audio_transcription_success",
+                "usage": "not available"
+            }))
+        
         cat.send_chat_message(CatMessage(user_id=cat.user_id, who="Human", text=transcription))
         return transcription
     else:

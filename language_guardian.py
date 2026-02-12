@@ -18,12 +18,13 @@ def _initialize_language_model():
         nlp_model = spacy.load("en_core_web_sm")
     except OSError:
         from spacy.cli import download
+
         download("en_core_web_sm")
         nlp_model = spacy.load("en_core_web_sm")
 
     Language.factory("language_detector", func=get_lang_detector)
-    nlp_model.add_pipe('language_detector', last=True)
-    
+    nlp_model.add_pipe("language_detector", last=True)
+
     return nlp_model
 
 
@@ -34,10 +35,10 @@ _nlp_model = _initialize_language_model()
 def detect_language(text: str) -> str:
     """
     Detect the language of a given text.
-    
+
     Args:
         text: The text to detect the language for.
-        
+
     Returns:
         The detected language code (e.g., 'en', 'de', 'es', 'fr').
     """
@@ -48,11 +49,11 @@ def detect_language(text: str) -> str:
 def is_same_language(text1: str, text2: str) -> bool:
     """
     Check if two strings are in the same language.
-    
+
     Args:
         text1: The first text string.
         text2: The second text string.
-        
+
     Returns:
         True if both texts are in the same language, False otherwise.
     """
@@ -73,7 +74,7 @@ def translate_text(text_to_translate: str, reference_text: str, cat: Any) -> str
         # Fallback if plugin logic fails (rare)
         return text_to_translate
 
-    api_key = settings.get('google_api_key', '')
+    api_key = settings.get("google_api_key", "")
 
     # 2. Prepare Prompt
     prompt = f"""Behave like a helpful translator.
@@ -92,67 +93,61 @@ Only output the translated text between <|startoftext|> and <|endoftext|>, nothi
     if api_key:
         # Try Gemini 2.5 Flash Lite first, fallback to 2.0 Flash Lite on 503
         models_to_try = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite"]
-        
+
         for model_name in models_to_try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-            
-            payload = {
-                "contents": [{
-                    "parts": [{"text": prompt}]
-                }]
-            }
+
+            payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
             try:
                 response = requests.post(url, json=payload, timeout=30)
-                
+
                 if response.status_code == 503:
                     # Check if it's the high demand error
                     try:
                         error_data = response.json()
-                        if (error_data.get("error", {}).get("status") == "UNAVAILABLE" and 
-                            "high demand" in error_data.get("error", {}).get("message", "").lower()):
+                        if (
+                            error_data.get("error", {}).get("status") == "UNAVAILABLE"
+                            and "high demand"
+                            in error_data.get("error", {}).get("message", "").lower()
+                        ):
                             # log.warning(f"Model {model_name} experiencing high demand, trying next model...")
                             continue  # Try next model
                     except:
                         pass
-                    
+
                     # If not the specific high demand error, return original text
-                    log.error(json.dumps({
-                        "event": "translation_error",
-                        "status_code": response.status_code,
-                        "response": response.text
-                    }))
+                    log.error(
+                        json.dumps(
+                            {
+                                "event": "translation_error",
+                                "status_code": response.status_code,
+                                "response": response.text,
+                            }
+                        )
+                    )
                     return text_to_translate
-                
+
                 if response.status_code != 200:
-                    log.error(json.dumps({
-                        "event": "translation_error",
-                        "status_code": response.status_code,
-                        "response": response.text
-                    }))
+                    log.error(
+                        json.dumps(
+                            {
+                                "event": "translation_error",
+                                "status_code": response.status_code,
+                                "response": response.text,
+                            }
+                        )
+                    )
                     return text_to_translate
 
                 data = response.json()
-                
-                # Track Usage
-                # if "usageMetadata" in data:
-                #     usage = data["usageMetadata"]
-                #     input_tokens = usage.get("promptTokenCount", 0)
-                #     output_tokens = usage.get("candidatesTokenCount", 0)
-                    
-                #     # Store usage in cat instance (transient) for analytics to pick up
-                #     if not hasattr(cat, "translation_usage"):
-                #         cat.translation_usage = {"input": 0, "output": 0}
-                    
-                #     cat.translation_usage["input"] += input_tokens
-                #     cat.translation_usage["output"] += output_tokens
-                
+
                 # Extract Content
                 if "candidates" in data and data["candidates"]:
                     content = data["candidates"][0]["content"]
                     parts = content.get("parts", [])
                     raw_text = "".join([p.get("text", "") for p in parts]).strip()
-                    
+
                     # Parse the translated text between <|startoftext|> and <|endoftext|>
                     start_tag = "<|startoftext|>"
                     end_tag = "<|endoftext|>"
@@ -161,46 +156,71 @@ Only output the translated text between <|startoftext|> and <|endoftext|>, nothi
                         end_idx = raw_text.find(end_tag)
                         translated_text = raw_text[start_idx:end_idx].strip()
                     else:
-                        log.warning(json.dumps({
-                            "event": "translation_warning",
-                            "reason": "Response does not contain expected tags",
-                            "raw_response": raw_text
-                        }))
-                        translated_text = text_to_translate.split("current time")[0].strip()  # Fallback to original if format is unexpected
-                    
-                    log.info(json.dumps({
-                        "event": "translation_success",
-                        "model": model_name,
-                        "input_length": len(text_to_translate),
-                        "output_length": len(translated_text)
-                    }))
-                    
+                        log.warning(
+                            json.dumps(
+                                {
+                                    "event": "translation_warning",
+                                    "reason": "Response does not contain expected tags",
+                                    "raw_response": raw_text,
+                                }
+                            )
+                        )
+                        translated_text = text_to_translate.split("current time")[
+                            0
+                        ].strip()  # Fallback to original if format is unexpected
+
+                    log.info(
+                        json.dumps(
+                            {
+                                "event": "translation_success",
+                                "model": model_name,
+                                "input_length": len(text_to_translate),
+                                "output_length": len(translated_text),
+                            }
+                        )
+                    )
+
                     return translated_text
-                
-                log.warning(json.dumps({
-                    "event": "translation_warning",
-                    "reason": "API returned no candidates",
-                    "response": data
-                }))
+
+                log.warning(
+                    json.dumps(
+                        {
+                            "event": "translation_warning",
+                            "reason": "API returned no candidates",
+                            "response": data,
+                        }
+                    )
+                )
                 return text_to_translate
-                
+
             except Exception as e:
-                log.error(json.dumps({
-                    "event": "translation_exception",
-                    "model": model_name,
-                    "error": str(e)
-                }))
-                if model_name == models_to_try[-1]:  # If this is the last model, return original
+                log.error(
+                    json.dumps(
+                        {
+                            "event": "translation_exception",
+                            "model": model_name,
+                            "error": str(e),
+                        }
+                    )
+                )
+                if (
+                    model_name == models_to_try[-1]
+                ):  # If this is the last model, return original
                     return text_to_translate
                 else:
-                    log.warning(json.dumps({
-                        "event": "translation_retry",
-                        "reason": f"Exception with {model_name}, trying next model"
-                    }))
+                    log.warning(
+                        json.dumps(
+                            {
+                                "event": "translation_retry",
+                                "reason": f"Exception with {model_name}, trying next model",
+                            }
+                        )
+                    )
                     continue  # Try next model
 
-    log.warning(json.dumps({
-        "event": "translation_skipped",
-        "reason": "No Google API Key found"
-    }))
+    log.warning(
+        json.dumps(
+            {"event": "translation_skipped", "reason": "No Google API Key found"}
+        )
+    )
     return text_to_translate
