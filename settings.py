@@ -70,9 +70,9 @@ class ContextGuardianEnricherSettings(BaseModel):
         default=False,
         description="If enabled, moves sources that appear in the message text to the top of the sources list",
     )
-    handle_audio: bool = Field(
+    handle_audio: int = Field(
         title="Handle Audio",
-        default=False,
+        default=0,
         description="Whether to process audio attachments in the query and include their transcriptions in the context",
     )
     google_api_key: str = Field(
@@ -81,6 +81,13 @@ class ContextGuardianEnricherSettings(BaseModel):
         description="API Key for Gemini API (Audio STT)",
         extra={"type": "Password"},
     )
+
+    @validator("handle_audio")
+    def validate_handle_audio(cls, v):
+        """Validate that handle_audio is within reasonable bounds"""
+        if not 0 <= v <= 1:
+            raise ValueError("Handle audio must be either 0 or 1")
+        return v
 
     @validator("min_query_length")
     def validate_min_query_length(cls, v):
