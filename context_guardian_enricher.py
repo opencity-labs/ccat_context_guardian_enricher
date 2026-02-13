@@ -264,7 +264,7 @@ def fast_reply(_: Dict[str, Any], cat: StrayCat) -> Optional[CatMessage]:
     settings: Dict[str, Any] = cat.mad_hatter.get_plugin().load_settings()
     # handle audio message
     if cat.working_memory.user_message_json.get("audio") is not None:
-        if settings.get("handle_audio", 0) == 0:
+        if settings.get("handle_audio", "false") == "false":
             return CatMessage(user_id=cat.user_id, text="Audio input not supported.")
 
         transcription = handle_audio_transcription(
