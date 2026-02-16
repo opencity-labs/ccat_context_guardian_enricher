@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Set, Optional
 from cat.mad_hatter.decorators import hook
 from cat.looking_glass.stray_cat import StrayCat
-from cat.convo.messages import CatMessage
+from cat.convo.messages import CatMessage, Role
 from cat.log import log
 import re
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, ParseResult
@@ -167,7 +167,15 @@ def cat_recall_query(user_message: str, cat: StrayCat) -> str:
 
         # Extract text from recent messages and add to context
         for msg in recent_messages:
-            if hasattr(msg, "text") and msg.text.strip():
+            # Only include textual messages authored by the user (not the cat)
+            if (
+                hasattr(msg, "text")
+                and msg.text.strip()
+                and (
+                    getattr(msg, "role", None) == Role.Human
+                    or getattr(msg, "who", "").lower() == "human"
+                )
+            ):
                 # Clean up message text (remove timestamp info that was added in before_cat_reads_message)
                 clean_text = msg.text
                 if "\n\ncurrent time:" in clean_text:
