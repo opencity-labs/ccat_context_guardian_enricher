@@ -59,7 +59,9 @@ def is_same_language(text1: str, text2: str) -> bool:
     """
     lang1 = detect_language(text1)
     lang2 = detect_language(text2)
-    # log.warning(f"Detected languages - Text 1: {lang1['language']} (confidence: {lang1['score']}), Text 2: {lang2['language']} (confidence: {lang2['score']})")
+    # log.warning(
+    #     f"Detected languages - Text 1: {lang1['language']} (confidence: {lang1['score']}), Text 2: {lang2['language']} (confidence: {lang2['score']})"
+    # )
     return lang1["language"] == lang2["language"]
 
 
@@ -77,17 +79,16 @@ def translate_text(text_to_translate: str, reference_text: str, cat: Any) -> str
     api_key = settings.get("google_api_key", "")
 
     # 2. Prepare Prompt
-    prompt = f"""Behave like a helpful translator.
-I will provide you with a reference text and a text to translate.
-Your goal is:
-1. if the two languages are already the same, return the text to translate;
-2. if the two languages are different, translate the "Text to translate" into the same language as the "Reference text".
+    prompt = f"""Act as a translation engine. You will be provided with two texts, your task is to compare the language of the "Reference Text" with the "Text to Translate."
+1. If both texts are in the same language: the output will be the "Text to Translate" exactly as provided.
+2. If the two languages differ: the output will be the translation of the "Text to Translate" into the language used in the "Reference Text".
 
-Reference text: "{reference_text}"
+- Maintain the original tone and formatting.
+- Output the result between <|startoftext|> and <|endoftext|>.
+- No explanations, headers, or notes.
 
-Text to translate: "{text_to_translate}"
-
-Only output the translated text between <|startoftext|> and <|endoftext|>, nothing else. Do not add explanations."""
+Reference Text for language: "{reference_text}"
+Text to Translate: "{text_to_translate}" """
 
     # 3. Call Gemini API (if key exists)
     if api_key:
