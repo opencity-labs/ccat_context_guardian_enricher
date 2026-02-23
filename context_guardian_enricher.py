@@ -159,11 +159,11 @@ def before_cat_reads_message(
 
         transcription = handle_audio_transcription(user_message_json.audio, cat)
         if transcription:
-            user_message_json["text"] = transcription
+            user_message_json.text = transcription
 
     # append "current time" to user message
     current_time: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    user_message_json["text"] += f"\n\ncurrent time: {current_time}"
+    user_message_json.text += f"\n\ncurrent time: {current_time}"
 
     return user_message_json
 
