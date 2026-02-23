@@ -4,6 +4,7 @@ from cat.looking_glass.stray_cat import StrayCat
 from cat.convo.messages import CatMessage, Role
 from datetime import datetime
 import re
+from cat.log import log
 
 from .audio_guardian import handle_audio_transcription
 from .language_guardian import is_same_language, translate_text
@@ -80,58 +81,44 @@ def cat_recall_query(user_message: str, cat: StrayCat) -> str:
 
 
 @hook
-def fast_reply(_: Dict[str, Any], cat: StrayCat) -> Optional[CatMessage]:
+def agent_fast_reply(fast_reply: Dict[str, Any], cat: StrayCat) -> Optional[CatMessage]:
     """
     Early interception of user query to decide whether to proceed with RAG+LLM.
     Can act as a panic button that always returns a default message.
     Also checks for procedural memories (tools/forms) before rejecting queries.
 
     Args:
-        _: The input from the agent (unused)
+        fast_reply: The input from the agent
         cat: The StrayCat instance
 
     Returns:
         CatMessage if no relevant context found or panic button is enabled, None otherwise
     """
     settings: Dict[str, Any] = cat.mad_hatter.get_plugin().load_settings()
-    # handle audio message
-    if cat.working_memory.user_message_json.get("audio") is not None:
-        if settings.get("handle_audio", "false") == "false":
-            return CatMessage(user_id=cat.user_id, text="Audio input not supported.")
-
-        transcription = handle_audio_transcription(
-            cat.working_memory.user_message_json.audio, cat
-        )
-        if transcription:
-            cat.working_memory.user_message_json.text = transcription
-
     # prepare localized default message using browser info if available
     info = getattr(cat.working_memory.user_message_json, "info", {})
-    default_msg = select_default_message(settings, info)
+    default_msg = select_default_message(info)
 
     # Check if panic button is enabled - if so, return immediately with panic text
     if settings.get("panic_button_enabled", False):
-        return CatMessage(
-            user_id=cat.user_id,
-            text=settings.get(
-                "panic_button_text",
-                "Sorry, I'm under maintenance right now. Please try again later.",
-            ),
+        fast_reply["output"] = settings.get(
+            "panic_button_text",
+            "Sorry, I'm under maintenance right now. Please try again later.",
         )
+        return fast_reply
 
     # return default message if the length of the user query is less than minimum length
     min_query_length: int = settings.get("min_query_length", 10)
     user_query: str = cat.working_memory.user_message_json.text.strip()
     if len(user_query) < min_query_length:
-        return CatMessage(user_id=cat.user_id, text=default_msg)
+        fast_reply["output"] = default_msg
+        return fast_reply
 
     # return default message if the length of the user query exceeds maximum length (if enabled)
     max_query_len: int = settings.get("max_query_len", 500)
     if max_query_len > 0 and len(user_query) > max_query_len:
-        return CatMessage(user_id=cat.user_id, text=default_msg)
-
-    # Regular source enricher behavior
-    cat.recall_relevant_memories_to_working_memory()
+        fast_reply["output"] = default_msg
+        return fast_reply
 
     # Check if we have relevant context from declarative memories
     has_declarative_context: bool = bool(cat.working_memory.declarative_memories)
@@ -143,7 +130,8 @@ def fast_reply(_: Dict[str, Any], cat: StrayCat) -> Optional[CatMessage]:
         form_ongoing = cat.working_memory.active_form is not None
 
     if not has_declarative_context and not form_ongoing:
-        return CatMessage(user_id=cat.user_id, text=default_msg)
+        fast_reply["output"] = default_msg
+        return fast_reply
 
     return None
 
@@ -163,10 +151,19 @@ def before_cat_reads_message(
     Returns:
         Modified user message JSON object
     """
+    settings: Dict[str, Any] = cat.mad_hatter.get_plugin().load_settings()
+    # handle audio message
+    if user_message_json.get("audio") is not None:
+        if settings.get("handle_audio", "false") == "false":
+            return CatMessage(user_id=cat.user_id, text="Audio input not supported.")
+
+        transcription = handle_audio_transcription(user_message_json.audio, cat)
+        if transcription:
+            user_message_json["text"] = transcription
 
     # append "current time" to user message
     current_time: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    user_message_json.text += f"\n\ncurrent time: {current_time}"
+    user_message_json["text"] += f"\n\ncurrent time: {current_time}"
 
     return user_message_json
 

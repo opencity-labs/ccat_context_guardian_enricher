@@ -1,7 +1,8 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 import re
 import uuid
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, ParseResult
+from cat.log import log
 
 # Default translations for the standard fallback message
 DEFAULT_MESSAGES: Dict[str, str] = {
@@ -146,7 +147,7 @@ def _get_browser_lang_code_from_info(info: Any) -> str:
     return ""
 
 
-def select_default_message(settings: Dict[str, Any], info: Any) -> str:
+def select_default_message(info: Any) -> str:
     """Select the localized default message.
 
     Priority:
@@ -155,27 +156,9 @@ def select_default_message(settings: Dict[str, Any], info: Any) -> str:
       3. settings['default_message'] if provided
       4. English fallback
     """
-    # obtain messages dict from settings if provided
-    messages = settings.get("default_messages")
-    fallback_flat = settings.get("default_message")
-
     # determine lang code from info
     lang = _get_browser_lang_code_from_info(info)
-
-    # Try settings-provided dict first
-    if isinstance(messages, dict) and lang and lang in messages:
-        return messages.get(lang)
-
-    # Try built-in defaults
     if lang and lang in DEFAULT_MESSAGES:
         return DEFAULT_MESSAGES[lang]
 
-    # Fallbacks
-    if isinstance(messages, dict) and messages:
-        # pick english if present otherwise first available
-        return messages.get("en") or next(iter(messages.values()))
-
-    if fallback_flat:
-        return fallback_flat
-
-    return DEFAULT_MESSAGES["en"]
+    return DEFAULT_MESSAGES["it"]
