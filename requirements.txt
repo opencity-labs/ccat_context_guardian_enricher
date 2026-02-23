@@ -1,4 +1,4 @@
 requests
 spacy-language-detection
 spacy
-click>=8.0.0
+typer<0.10.0
