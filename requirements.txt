@@ -1,3 +1,4 @@
 requests
 spacy-language-detection
 spacy
+click>=8.0.0
