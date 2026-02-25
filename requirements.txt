@@ -2,3 +2,4 @@ requests
 spacy-language-detection
 spacy
 typer<0.10.0
+tiktoken

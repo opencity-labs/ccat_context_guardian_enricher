@@ -81,6 +81,33 @@ def cat_recall_query(user_message: str, cat: StrayCat) -> str:
 
 
 @hook
+def fast_reply(_: Dict[str, Any], cat: StrayCat):
+    settings: Dict[str, Any] = cat.mad_hatter.get_plugin().load_settings()
+    # handle audio message
+    if cat.working_memory.user_message_json.get("audio") is not None:
+        if settings.get("handle_audio", "false") == "false":
+            setattr(cat.working_memory, "fast_reply_triggered", True)
+            return CatMessage(
+                user_id=cat.user_id,
+                who="Cat",
+                text="Sorry, I can't process audio messages right now.",
+            )
+        transcription = handle_audio_transcription(
+            cat.working_memory.user_message_json.audio, cat
+        )
+        if transcription:
+            cat.working_memory.user_message_json.text = transcription
+        else:
+            setattr(cat.working_memory, "fast_reply_triggered", True)
+            return CatMessage(
+                user_id=cat.user_id,
+                who="Cat",
+                text="Sorry, I couldn't transcribe the audio message.",
+            )
+    return None
+
+
+@hook
 def agent_fast_reply(fast_reply: Dict[str, Any], cat: StrayCat) -> Optional[CatMessage]:
     """
     Early interception of user query to decide whether to proceed with RAG+LLM.
@@ -105,6 +132,7 @@ def agent_fast_reply(fast_reply: Dict[str, Any], cat: StrayCat) -> Optional[CatM
             "panic_button_text",
             "Sorry, I'm under maintenance right now. Please try again later.",
         )
+        setattr(cat.working_memory, "fast_reply_triggered", True)
         return fast_reply
 
     # return default message if the length of the user query is less than minimum length
@@ -112,12 +140,14 @@ def agent_fast_reply(fast_reply: Dict[str, Any], cat: StrayCat) -> Optional[CatM
     user_query: str = cat.working_memory.user_message_json.text.strip()
     if len(user_query) < min_query_length:
         fast_reply["output"] = default_msg
+        setattr(cat.working_memory, "fast_reply_triggered", True)
         return fast_reply
 
     # return default message if the length of the user query exceeds maximum length (if enabled)
     max_query_len: int = settings.get("max_query_len", 500)
     if max_query_len > 0 and len(user_query) > max_query_len:
         fast_reply["output"] = default_msg
+        setattr(cat.working_memory, "fast_reply_triggered", True)
         return fast_reply
 
     # Check if we have relevant context from declarative memories
@@ -131,6 +161,7 @@ def agent_fast_reply(fast_reply: Dict[str, Any], cat: StrayCat) -> Optional[CatM
 
     if not has_declarative_context and not form_ongoing:
         fast_reply["output"] = default_msg
+        setattr(cat.working_memory, "fast_reply_triggered", True)
         return fast_reply
 
     return None
@@ -151,16 +182,6 @@ def before_cat_reads_message(
     Returns:
         Modified user message JSON object
     """
-    settings: Dict[str, Any] = cat.mad_hatter.get_plugin().load_settings()
-    # handle audio message
-    if user_message_json.get("audio") is not None:
-        if settings.get("handle_audio", "false") == "false":
-            return CatMessage(user_id=cat.user_id, text="Audio input not supported.")
-
-        transcription = handle_audio_transcription(user_message_json.audio, cat)
-        if transcription:
-            user_message_json.text = transcription
-
     # append "current time" to user message
     current_time: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     user_message_json.text += f"\n\ncurrent time: {current_time}"
@@ -215,16 +236,23 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
     Returns:
         The enriched CatMessage with sources and UTM tracking
     """
-    # Check if the user's message and bot's answer are in the same language
-    is_same_lang = is_same_language(
-        cat.working_memory.user_message_json.text, message.text
-    )
-
-    if not is_same_lang:
-        # log.info("Language mismatch detected. Translating response...")
-        message.text = translate_text(
-            message.text, cat.working_memory.user_message_json.text, cat
+    # If a fast reply was triggered earlier, skip language detection/translation
+    if getattr(cat.working_memory, "fast_reply_triggered", False):
+        try:
+            delattr(cat.working_memory, "fast_reply_triggered")
+        except Exception:
+            pass
+    else:
+        # Check if the user's message and bot's answer are in the same language
+        is_same_lang = is_same_language(
+            cat.working_memory.user_message_json.text, message.text
         )
+
+        if not is_same_lang:
+            # log.info("Language mismatch detected. Translating response...")
+            message.text = translate_text(
+                message.text, cat.working_memory.user_message_json.text, cat
+            )
 
     # if form_ongoing: # skip rejection if user is in a form session
     form_ongoing: bool = False

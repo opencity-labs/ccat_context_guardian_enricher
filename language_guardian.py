@@ -5,6 +5,19 @@ from cat.log import log
 import requests
 import json
 from typing import Any
+import tiktoken
+
+_TIKTOKEN_ENCODING = tiktoken.get_encoding("cl100k_base")
+
+
+def _count_tokens(text: str) -> int:
+    """Return token count for text using tiktoken if available, fall back to len(text)."""
+    if not _TIKTOKEN_ENCODING:
+        return len(text)
+    try:
+        return len(_TIKTOKEN_ENCODING.encode(text))
+    except Exception:
+        return len(text)
 
 
 def get_lang_detector(nlp, name):
@@ -65,6 +78,10 @@ def is_same_language(text1: str, text2: str) -> bool:
     return lang1["language"] == lang2["language"]
 
 
+_STARTOF_TEXT_TAG = "<|startoftext|>"
+_ENDOF_TEXT_TAG = "<|endoftext|>"
+
+
 def translate_text(text_to_translate: str, reference_text: str, cat: Any) -> str:
     """
     Translates text_to_translate to the language of reference_text.
@@ -80,12 +97,12 @@ def translate_text(text_to_translate: str, reference_text: str, cat: Any) -> str
 
     # 2. Prepare Prompt
     prompt = f"""Act as a translation engine. You will be provided with two texts, your task is to compare the language of the "Reference Text" with the "Text to Translate."
-1. If both texts are in the same language: the output will be the "Text to Translate" exactly as provided.
-2. If the two languages differ: the output will be the translation of the "Text to Translate" into the language used in the "Reference Text".
-
 - Maintain the original tone and formatting.
-- Output the result between <|startoftext|> and <|endoftext|>.
+- Output the result between {_STARTOF_TEXT_TAG} and {_ENDOF_TEXT_TAG}.
 - No explanations, headers, or notes.
+
+1. If both texts are in the same language: the output will be empty, so just: {_STARTOF_TEXT_TAG}{_ENDOF_TEXT_TAG};
+2. If the two languages differ: the output will be ONLY the translation of the "Text to Translate" into the language used in the "Reference Text", so {_STARTOF_TEXT_TAG}TRANSLATED TEXT{_ENDOF_TEXT_TAG}
 
 Reference Text for language: "{reference_text}"
 Text to Translate: "{text_to_translate}" """
@@ -149,13 +166,26 @@ Text to Translate: "{text_to_translate}" """
                     parts = content.get("parts", [])
                     raw_text = "".join([p.get("text", "") for p in parts]).strip()
 
-                    # Parse the translated text between <|startoftext|> and <|endoftext|>
-                    start_tag = "<|startoftext|>"
-                    end_tag = "<|endoftext|>"
-                    if start_tag in raw_text and end_tag in raw_text:
-                        start_idx = raw_text.find(start_tag) + len(start_tag)
-                        end_idx = raw_text.find(end_tag)
+                    # Parse the translated text between {_STARTOF_TEXT_TAG} and {_ENDOF_TEXT_TAG}
+                    if _STARTOF_TEXT_TAG in raw_text and _ENDOF_TEXT_TAG in raw_text:
+                        start_idx = raw_text.find(_STARTOF_TEXT_TAG) + len(
+                            _STARTOF_TEXT_TAG
+                        )
+                        end_idx = raw_text.find(_ENDOF_TEXT_TAG)
                         translated_text = raw_text[start_idx:end_idx].strip()
+                        if translated_text == "":
+                            # If translation is empty, the model detected same language and returned empty translation, so we fallback to original text
+                            translated_text = text_to_translate
+                        log.info(
+                            json.dumps(
+                                {
+                                    "event": "translation_success",
+                                    "model": model_name,
+                                    "input_length": _count_tokens(text_to_translate),
+                                    "output_length": _count_tokens(translated_text),
+                                }
+                            )
+                        )
                     else:
                         log.warning(
                             json.dumps(
@@ -169,17 +199,6 @@ Text to Translate: "{text_to_translate}" """
                         translated_text = text_to_translate.split("current time")[
                             0
                         ].strip()  # Fallback to original if format is unexpected
-
-                    log.info(
-                        json.dumps(
-                            {
-                                "event": "translation_success",
-                                "model": model_name,
-                                "input_length": len(text_to_translate),
-                                "output_length": len(translated_text),
-                            }
-                        )
-                    )
 
                     return translated_text
 
