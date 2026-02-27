@@ -1,3 +1,4 @@
+from enum import Enum
 from cat.mad_hatter.decorators import plugin
 from pydantic import BaseModel, Field, validator
 
@@ -80,6 +81,18 @@ class ContextGuardianEnricherSettings(BaseModel):
         default="",
         description="API Key for Gemini API (Audio STT)",
         extra={"type": "Password"},
+    )
+
+    class GeminiModels(str, Enum):
+        GEMINI_2_5_FLASH_LITE = "gemini-2.5-flash-lite"
+        GEMINI_2_0_FLASH_LITE = "gemini-2.0-flash-lite"
+        GEMINI_2_5_FLASH = "gemini-2.5-flash"
+        GEMINI_2_0_FLASH = "gemini-2.0-flash"
+
+    selected_model: GeminiModels = Field(
+        title="Selected Gemini Model",
+        default=GeminiModels.GEMINI_2_0_FLASH,
+        description="Gemini model to try first when calling the API",
     )
 
     @validator("handle_audio")

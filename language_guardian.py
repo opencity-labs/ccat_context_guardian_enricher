@@ -81,6 +81,14 @@ def is_same_language(text1: str, text2: str) -> bool:
 _STARTOF_TEXT_TAG = "<|startoftext|>"
 _ENDOF_TEXT_TAG = "<|endoftext|>"
 
+# Ordered list of supported Gemini models (fallback order)
+BASE_MODELS = [
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+]
+
 
 def translate_text(text_to_translate: str, reference_text: str, cat: Any) -> str:
     """
@@ -109,8 +117,25 @@ Text to Translate: "{text_to_translate}" """
 
     # 3. Call Gemini API (if key exists)
     if api_key:
-        # Try Gemini 2.5 Flash Lite first, fallback to 2.0 Flash Lite on 503
-        models_to_try = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite"]
+        # Determine the selected model from settings (settings may be dict or pydantic model)
+        selected_model = None
+        try:
+            if isinstance(settings, dict):
+                selected_model = settings.get("selected_model")
+            else:
+                selected_model = getattr(settings, "selected_model", None)
+            if hasattr(selected_model, "value"):
+                selected_model = selected_model.value
+        except Exception:
+            selected_model = None
+
+        # Build models_to_try with the selected model first, then the remaining BASE_MODELS
+        if selected_model in BASE_MODELS:
+            models_to_try = [selected_model] + [
+                m for m in BASE_MODELS if m != selected_model
+            ]
+        else:
+            models_to_try = BASE_MODELS.copy()
 
         for model_name in models_to_try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
