@@ -78,8 +78,8 @@ def enrich_links_with_utm(text: str, utm_source: str = "") -> str:
         markdown_links[placeholder] = f"[{link_text}]({enhanced_url}{title_part})"
         return placeholder
 
-    # Match markdown links with proper URL handling including parentheses, optional whitespace and titles
-    markdown_link_pattern = r'\[([^\]]*)\]\(\s*(https?://[^\s)]*(?:\([^)]*\)[^\s)]*)*[^\s)]*)(\s*(?:["\'].*?["\'])?\s*)\)'
+    # Match markdown links with proper URL handling
+    markdown_link_pattern = r'\[([^\]]*)\]\(\s*(https?://(?:[^\s()]*|\([^\s()]*\))*[^\s()]*)(\s*(?:["\'].*?["\'])?\s*)\)'
     text = re.sub(markdown_link_pattern, store_markdown_link, text)
 
     # Step 2: Process plain URLs with smart naming

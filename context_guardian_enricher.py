@@ -243,16 +243,26 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
         except Exception:
             pass
     else:
-        # Check if the user's message and bot's answer are in the same language
-        is_same_lang = is_same_language(
-            cat.working_memory.user_message_json.text, message.text
-        )
-
-        if not is_same_lang:
-            # log.info("Language mismatch detected. Translating response...")
-            message.text = translate_text(
-                message.text, cat.working_memory.user_message_json.text, cat
+        # Check if the user's message and bot's answer are in the same language.
+        # Wrapped in try/except so that a failure in language detection or translation
+        # does not prevent the rest of the hook (UTM enrichment, sources) from running.
+        try:
+            is_same_lang = is_same_language(
+                cat.working_memory.user_message_json.text, message.text
             )
+
+            if not is_same_lang:
+                # log.info("Language mismatch detected. Translating response...")
+                message.text = translate_text(
+                    message.text, cat.working_memory.user_message_json.text, cat
+                )
+        except Exception as e:
+            log.error(
+                f"Language detection/translation failed, proceeding without translation: {e}"
+            )
+
+    settings: Dict[str, Any] = cat.mad_hatter.get_plugin().load_settings()
+    utm_source: str = settings.get("utm_source", "")
 
     # if form_ongoing: # skip rejection if user is in a form session
     form_ongoing: bool = False
@@ -262,10 +272,8 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
         return message
     if "<no_sources>" in message.text:
         message.text = message.text.replace("<no_sources>", "")
+        message.text = enrich_links_with_utm(message.text, utm_source)
         return message
-
-    settings: Dict[str, Any] = cat.mad_hatter.get_plugin().load_settings()
-    utm_source: str = settings.get("utm_source", "")
 
     # Collect sources from declarative memories in order (most relevant first)
     sources: List[Dict[str, str]] = []
@@ -332,12 +340,17 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
 
     if remove_inline or suggestion_first:
         # Find all URLs in the message text (both plain and markdown)
-        # Match markdown links [text](url)
-        markdown_urls = re.findall(r"\[([^\]]*)\]\((https?://[^\s)]+)\)", message.text)
+        # Match markdown links [text](url) — handle balanced parentheses in URLs
+        markdown_urls = re.findall(
+            r"\[([^\]]*)\]\((https?://(?:[^\s()]*|\([^\s()]*\))*[^\s()]*)\)",
+            message.text,
+        )
         inline_urls.update(url for _, url in markdown_urls)
 
-        # Match plain URLs
-        plain_urls = re.findall(r"https?://[^\s<>\[\]()]+", message.text)
+        # Match plain URLs (may include balanced parentheses)
+        plain_urls = re.findall(
+            r"https?://(?:[^\s<>\[\]()]*|\([^\s()]*\))+", message.text
+        )
         inline_urls.update(plain_urls)
 
         # Clean trailing punctuation from URLs
