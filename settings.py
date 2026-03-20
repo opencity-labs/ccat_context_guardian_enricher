@@ -1,6 +1,7 @@
 from enum import Enum
 from cat.mad_hatter.decorators import plugin
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field
+from pydantic.v1 import validator
 
 
 class ContextGuardianEnricherSettings(BaseModel):
