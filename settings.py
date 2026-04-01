@@ -52,6 +52,11 @@ class ContextGuardianEnricherSettings(BaseModel):
         default=1000,
         description="Maximum length of the enhanced query string to avoid embedding model limits",
     )
+    per_message_top_k: int = Field(
+        title="Per-Message Top K",
+        default=2,
+        description="Number of top results to keep from each individual message vector search (used when conversation has multiple messages)",
+    )
     max_query_len: int = Field(
         title="Maximum User Query Length",
         default=500,
@@ -122,6 +127,13 @@ class ContextGuardianEnricherSettings(BaseModel):
         """Validate that max_query_length is within reasonable bounds"""
         if not 100 <= v <= 5000:
             raise ValueError("Maximum query length must be between 100 and 5000")
+        return v
+
+    @validator("per_message_top_k")
+    def validate_per_message_top_k(cls, v):
+        """Validate that per_message_top_k is within reasonable bounds"""
+        if not 1 <= v <= 10:
+            raise ValueError("Per-message top K must be between 1 and 10")
         return v
 
     @validator("min_source_char")

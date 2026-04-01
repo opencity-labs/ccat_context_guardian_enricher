@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Set, Optional
+from typing import Any, Dict, List, Set, Optional, Tuple
 from cat.mad_hatter.decorators import hook
 from cat.looking_glass.stray_cat import StrayCat
 from cat.convo.messages import CatMessage, Role
@@ -15,69 +15,162 @@ from .utils import (
 )
 
 
+def _get_user_messages_from_history(cat: StrayCat, count: int) -> List[str]:
+    """Extract the last `count` clean user messages from conversation history.
+
+    Walks history backwards to collect exactly `count` human messages
+    (the history is interleaved H-A-H-A-H, so we can't just slice).
+    """
+    if not (hasattr(cat.working_memory, "history") and cat.working_memory.history):
+        return []
+
+    messages: List[str] = []
+    for msg in reversed(cat.working_memory.history):
+        if len(messages) >= count:
+            break
+        if (
+            hasattr(msg, "text")
+            and msg.text.strip()
+            and (
+                getattr(msg, "role", None) == Role.Human
+                or getattr(msg, "who", "").lower() == "human"
+            )
+        ):
+            clean_text = msg.text
+            if "\n\ncurrent time:" in clean_text:
+                clean_text = clean_text.split("\n\ncurrent time:")[0]
+            clean_text = clean_text.strip()
+            if clean_text:
+                messages.append(clean_text)
+
+    messages.reverse()
+    return messages
+
+
 @hook
 def cat_recall_query(user_message: str, cat: StrayCat) -> str:
     """
     Enhance memory search query by combining current message with recent conversation history.
-    This allows for better context understanding when searching for relevant memories.
-
-    Args:
-        user_message: The current user message
-        cat: The StrayCat instance
-
-    Returns:
-        Enhanced query string that includes conversation history context
     """
     settings: Dict[str, Any] = cat.mad_hatter.get_plugin().load_settings()
-    # Check if conversation history enhancement is enabled
-    use_conversation_history: bool = settings.get("use_conversation_history", True)
-    if not use_conversation_history:
+    if not settings.get("use_conversation_history", True):
         return user_message
 
-    # Get number of previous messages to include in context
     history_length: int = settings.get("conversation_history_length", 3)
 
-    # Build enhanced query with conversation history
-    enhanced_query_parts: List[str] = []
+    # The current message is already in history (framework adds it before recall).
+    # _get_user_messages_from_history returns exactly `history_length` cleaned
+    # human messages (timestamp stripped), so no need to append user_message again.
+    query_parts = _get_user_messages_from_history(cat, history_length)
 
-    # Add recent conversation history if available
-    if hasattr(cat.working_memory, "history") and cat.working_memory.history:
-        # Get recent messages (excluding the current one which hasn't been added yet)
-        recent_messages = (
-            cat.working_memory.history[-history_length:]
-            if len(cat.working_memory.history) >= history_length
-            else cat.working_memory.history
-        )
+    if not query_parts:
+        return user_message
 
-        # Extract text from recent messages and add to context
-        for msg in recent_messages:
-            # Only include textual messages authored by the user (not the cat)
-            if (
-                hasattr(msg, "text")
-                and msg.text.strip()
-                and (
-                    getattr(msg, "role", None) == Role.Human
-                    or getattr(msg, "who", "").lower() == "human"
-                )
-            ):
-                # Clean up message text (remove timestamp info that was added in before_cat_reads_message)
-                clean_text = msg.text
-                if "\n\ncurrent time:" in clean_text:
-                    clean_text = clean_text.split("\n\ncurrent time:")[0]
-                enhanced_query_parts.append(clean_text.strip())
+    # Store for graduated per-message search in after_cat_recalls_memories
+    cat.working_memory.cge_recall_query_parts = query_parts
 
-    # Add current message
-    enhanced_query_parts.append(user_message)
+    enhanced_query: str = " ".join(query_parts)
 
-    # Combine all parts into enhanced query
-    enhanced_query: str = " ".join(enhanced_query_parts)
-
-    # Limit query length to avoid embedding model limits
     max_query_length: int = settings.get("max_query_length", 1000)
     if len(enhanced_query) > max_query_length:
         enhanced_query = enhanced_query[-max_query_length:]
 
+    log.warning(
+        f"[CGE] cat_recall_query → {len(query_parts)} parts: {[p[:60] for p in query_parts]}"
+    )
     return enhanced_query
+
+
+@hook
+def before_cat_recalls_declarative_memories(
+    declarative_recall_config: dict, cat: StrayCat
+) -> dict:
+    """Capture the declarative threshold for use in after_cat_recalls_memories."""
+    cat.working_memory.cge_declarative_threshold = declarative_recall_config.get(
+        "threshold", 0.7
+    )
+    return declarative_recall_config
+
+
+@hook
+def after_cat_recalls_memories(cat: StrayCat) -> None:
+    """
+    After the framework's combined-query recall, do graduated per-message
+    vector searches and merge everything (deduplicated, sorted by score).
+
+    Each message gets a search budget proportional to its recency:
+      oldest message  → per_message_top_k * 1
+      …
+      current message → per_message_top_k * N   (N = number of messages)
+    """
+    query_parts: List[str] = getattr(cat.working_memory, "cge_recall_query_parts", None)
+    if not query_parts or len(query_parts) <= 1:
+        log.warning(
+            f"[CGE] after_cat_recalls_memories → skipped (parts={len(query_parts) if query_parts else 0})"
+        )
+        return
+
+    settings: Dict[str, Any] = cat.mad_hatter.get_plugin().load_settings()
+    per_message_top_k: int = settings.get("per_message_top_k", 3)
+
+    # Use the same threshold the framework used for its declarative recall
+    # (captured by our before_cat_recalls_declarative_memories hook).
+    threshold = getattr(cat.working_memory, "cge_declarative_threshold", 0.7)
+
+    per_message_memories: List[Tuple] = []
+    seen_ids: Set[str] = set()
+
+    for i, msg in enumerate(query_parts):
+        if not msg:
+            continue
+        k = per_message_top_k * (i + 1)
+        log.warning(f"[CGE] per-msg search [{i}] k={k} query={msg[:80]!r}")
+        try:
+            embedding = cat.embedder.embed_query(msg)
+            results = cat.memory.vectors.declarative.recall_memories_from_embedding(
+                embedding=embedding,
+                k=k,
+                threshold=threshold,
+            )
+            for mem in results:
+                point_id = str(mem[3])
+                source = (
+                    mem[0].metadata.get("source", "?")
+                    if hasattr(mem[0], "metadata")
+                    else "?"
+                )
+                score = mem[1]
+                if point_id not in seen_ids:
+                    seen_ids.add(point_id)
+                    per_message_memories.append(mem)
+                    log.warning(f"[CGE]   NEW  score={score:.3f} src={source[:120]}")
+                else:
+                    log.warning(f"[CGE]   DUP  score={score:.3f} src={source[:120]}")
+        except Exception as e:
+            log.error(f"Per-message recall failed for '{msg[:50]}...': {e}")
+
+    # Merge with the framework's combined-query results
+    existing = cat.working_memory.declarative_memories or []
+    log.warning(f"[CGE] framework combined-query returned {len(existing)} results:")
+    for mem in existing:
+        src = mem[0].metadata.get("source", "?") if hasattr(mem[0], "metadata") else "?"
+        log.warning(f"[CGE]   FW   score={mem[1]:.3f} src={src[:120]}")
+    seen_ids = {str(mem[3]) for mem in existing}
+    merged = list(existing)
+
+    for mem in per_message_memories:
+        point_id = str(mem[3])
+        if point_id not in seen_ids:
+            seen_ids.add(point_id)
+            merged.append(mem)
+
+    merged.sort(key=lambda m: m[1], reverse=True)
+    cat.working_memory.declarative_memories = merged
+    del cat.working_memory.cge_recall_query_parts
+
+    log.warning(
+        f"[CGE] FINAL: {len(per_message_memories)} per-msg + {len(existing)} framework → {len(merged)} total unique"
+    )
 
 
 @hook
@@ -269,6 +362,9 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
     if hasattr(cat.working_memory, "active_form"):
         form_ongoing = cat.working_memory.active_form is not None
     if form_ongoing:
+        # if the message already has sources, remove them
+        if hasattr(message, "sources"):
+            message.sources = []
         return message
     if "<no_sources>" in message.text:
         message.text = message.text.replace("<no_sources>", "")
@@ -340,7 +436,7 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
 
     if remove_inline or suggestion_first:
         # Find all URLs in the message text (both plain and markdown)
-        # Match markdown links [text](url) — handle balanced parentheses in URLs
+        # Match markdown links [text](url), handle balanced parentheses in URLs
         markdown_urls = re.findall(
             r"\[([^\]]*)\]\((https?://(?:[^\s()]*|\([^\s()]*\))*[^\s()]*)\)",
             message.text,
