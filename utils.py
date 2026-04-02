@@ -21,6 +21,23 @@ DEFAULT_MESSAGES: Dict[str, str] = {
 }
 
 
+def get_pdf_label(url: str) -> str:
+    """
+    If the URL points to a PDF file, extract a human-readable label from the filename.
+    Returns empty string if the URL is not a PDF.
+    """
+    parsed: ParseResult = urlparse(url)
+    path = parsed.path.rstrip("/")
+    if path.lower().endswith(".pdf"):
+        filename = path.rsplit("/", 1)[-1]
+        # Remove .pdf extension
+        name = filename[:-4]
+        # Clean up: replace underscores and hyphens with spaces
+        name = name.replace("_", " ").replace("-", " ")
+        return name.strip()
+    return ""
+
+
 def add_utm_tracking_to_url(url: str, utm_source: str) -> str:
     """
     Add UTM tracking parameter to a URL if it doesn't already have utm_source.

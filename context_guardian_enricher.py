@@ -11,6 +11,7 @@ from .language_guardian import is_same_language, translate_text
 from .utils import (
     add_utm_tracking_to_url,
     enrich_links_with_utm,
+    get_pdf_label,
     select_default_message,
 )
 
@@ -381,8 +382,9 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
             "title"
         )  # Page title is available here for web pages
         if source and source not in seen_sources:
+            label = title or get_pdf_label(source)
             sources.append(
-                {"url": source, "label": title or "", "length": len(doc.page_content)}
+                {"url": source, "label": label, "length": len(doc.page_content)}
             )
             seen_sources.add(source)
 
@@ -403,10 +405,11 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
             source: Optional[str] = doc.metadata.get("source")
             title: Optional[str] = doc.metadata.get("title")
             if source and source not in seen_second_sources:
+                label = title or get_pdf_label(source)
                 second_sources.append(
                     {
                         "url": source,
-                        "label": title or "",
+                        "label": label,
                         "length": len(doc.page_content),
                     }
                 )
