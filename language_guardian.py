@@ -2,22 +2,8 @@ import spacy
 from spacy.language import Language
 from spacy_language_detection import LanguageDetector
 from cat.log import log
-import requests
 import json
 from typing import Any
-import tiktoken
-
-_TIKTOKEN_ENCODING = tiktoken.get_encoding("cl100k_base")
-
-
-def _count_tokens(text: str) -> int:
-    """Return token count for text using tiktoken if available, fall back to len(text)."""
-    if not _TIKTOKEN_ENCODING:
-        return len(text)
-    try:
-        return len(_TIKTOKEN_ENCODING.encode(text))
-    except Exception:
-        return len(text)
 
 
 def get_lang_detector(nlp, name):
@@ -81,29 +67,12 @@ def is_same_language(text1: str, text2: str) -> bool:
 _STARTOF_TEXT_TAG = "<|startoftext|>"
 _ENDOF_TEXT_TAG = "<|endoftext|>"
 
-# Ordered list of supported Gemini models (fallback order)
-BASE_MODELS = [
-    "gemini-2.5-flash-lite",
-    "gemini-2.0-flash-lite",
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-]
-
 
 def translate_text(text_to_translate: str, reference_text: str, cat: Any) -> str:
     """
-    Translates text_to_translate to the language of reference_text.
+    Translates text_to_translate to the language of reference_text
+    using the LLM configured in the Cheshire Cat framework.
     """
-    # 1. Get Settings & API Key
-    try:
-        settings = cat.mad_hatter.get_plugin().load_settings()
-    except Exception:
-        # Fallback if plugin logic fails (rare)
-        return text_to_translate
-
-    api_key = settings.get("google_api_key", "")
-
-    # 2. Prepare Prompt
     prompt = f"""Act as a translation engine. You will be provided with two texts, your task is to compare the language of the "Reference Text" with the "Text to Translate."
 - Maintain the original tone and formatting.
 - Output the result between {_STARTOF_TEXT_TAG} and {_ENDOF_TEXT_TAG}.
@@ -115,157 +84,50 @@ def translate_text(text_to_translate: str, reference_text: str, cat: Any) -> str
 Reference Text for language: "{reference_text}"
 Text to Translate: "{text_to_translate}" """
 
-    # 3. Call Gemini API (if key exists)
-    if api_key:
-        # Determine the selected model from settings (settings may be dict or pydantic model)
-        selected_model = None
-        try:
-            if isinstance(settings, dict):
-                selected_model = settings.get("selected_model")
-            else:
-                selected_model = getattr(settings, "selected_model", None)
-            if hasattr(selected_model, "value"):
-                selected_model = selected_model.value
-        except Exception:
-            selected_model = None
+    try:
+        raw_text = cat.llm(prompt)
+    except Exception as e:
+        log.error(
+            json.dumps(
+                {
+                    "event": "translation_exception",
+                    "error": str(e),
+                }
+            )
+        )
+        return text_to_translate
 
-        # Build models_to_try with the selected model first, then the remaining BASE_MODELS
-        if selected_model in BASE_MODELS:
-            models_to_try = [selected_model] + [
-                m for m in BASE_MODELS if m != selected_model
-            ]
-        else:
-            models_to_try = BASE_MODELS.copy()
-
-        for model_name in models_to_try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-
-            payload = {"contents": [{"parts": [{"text": prompt}]}]}
-
-            try:
-                response = requests.post(url, json=payload, timeout=30)
-
-                if response.status_code == 503:
-                    # Check if it's the high demand error
-                    try:
-                        error_data = response.json()
-                        if (
-                            error_data.get("error", {}).get("status") == "UNAVAILABLE"
-                            and "high demand"
-                            in error_data.get("error", {}).get("message", "").lower()
-                        ):
-                            # log.warning(f"Model {model_name} experiencing high demand, trying next model...")
-                            continue  # Try next model
-                    except:
-                        pass
-
-                    # If not the specific high demand error, return original text
-                    log.error(
-                        json.dumps(
-                            {
-                                "event": "translation_error",
-                                "status_code": response.status_code,
-                                "response": response.text,
-                            }
-                        )
-                    )
-                    return text_to_translate
-
-                if response.status_code != 200:
-                    log.error(
-                        json.dumps(
-                            {
-                                "event": "translation_error",
-                                "status_code": response.status_code,
-                                "response": response.text,
-                            }
-                        )
-                    )
-                    return text_to_translate
-
-                data = response.json()
-
-                # Extract Content
-                if "candidates" in data and data["candidates"]:
-                    content = data["candidates"][0]["content"]
-                    parts = content.get("parts", [])
-                    raw_text = "".join([p.get("text", "") for p in parts]).strip()
-
-                    # Parse the translated text between {_STARTOF_TEXT_TAG} and {_ENDOF_TEXT_TAG}
-                    if _STARTOF_TEXT_TAG in raw_text and _ENDOF_TEXT_TAG in raw_text:
-                        start_idx = raw_text.find(_STARTOF_TEXT_TAG) + len(
-                            _STARTOF_TEXT_TAG
-                        )
-                        end_idx = raw_text.find(_ENDOF_TEXT_TAG)
-                        translated_text = raw_text[start_idx:end_idx].strip()
-                        if translated_text == "":
-                            # If translation is empty, the model detected same language and returned empty translation, so we fallback to original text
-                            translated_text = text_to_translate
-                        log.info(
-                            json.dumps(
-                                {
-                                    "event": "translation_success",
-                                    "model": model_name,
-                                    "input_length": _count_tokens(text_to_translate),
-                                    "output_length": _count_tokens(translated_text),
-                                }
-                            )
-                        )
-                    else:
-                        log.warning(
-                            json.dumps(
-                                {
-                                    "event": "translation_warning",
-                                    "reason": "Response does not contain expected tags",
-                                    "raw_response": raw_text,
-                                }
-                            )
-                        )
-                        translated_text = text_to_translate.split("current time")[
-                            0
-                        ].strip()  # Fallback to original if format is unexpected
-
-                    return translated_text
-
-                log.warning(
-                    json.dumps(
-                        {
-                            "event": "translation_warning",
-                            "reason": "API returned no candidates",
-                            "response": data,
-                        }
-                    )
+    # Parse the translated text between tags
+    if _STARTOF_TEXT_TAG in raw_text and _ENDOF_TEXT_TAG in raw_text:
+        start_idx = raw_text.find(_STARTOF_TEXT_TAG) + len(_STARTOF_TEXT_TAG)
+        end_idx = raw_text.find(_ENDOF_TEXT_TAG)
+        translated_text = raw_text[start_idx:end_idx].strip()
+        if translated_text == "":
+            # Same language detected, return original
+            log.info(
+                json.dumps(
+                    {
+                        "event": "translation_not_needed",
+                    }
                 )
-                return text_to_translate
-
-            except Exception as e:
-                log.error(
-                    json.dumps(
-                        {
-                            "event": "translation_exception",
-                            "model": model_name,
-                            "error": str(e),
-                        }
-                    )
-                )
-                if (
-                    model_name == models_to_try[-1]
-                ):  # If this is the last model, return original
-                    return text_to_translate
-                else:
-                    log.warning(
-                        json.dumps(
-                            {
-                                "event": "translation_retry",
-                                "reason": f"Exception with {model_name}, trying next model",
-                            }
-                        )
-                    )
-                    continue  # Try next model
+            )
+            return text_to_translate
+        log.info(
+            json.dumps(
+                {
+                    "event": "translation_success",
+                }
+            )
+        )
+        return translated_text
 
     log.warning(
         json.dumps(
-            {"event": "translation_skipped", "reason": "No Google API Key found"}
+            {
+                "event": "translation_warning",
+                "reason": "Response does not contain expected tags",
+                "raw_response": raw_text,
+            }
         )
     )
     return text_to_translate

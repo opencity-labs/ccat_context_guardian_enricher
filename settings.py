@@ -1,7 +1,6 @@
 from enum import Enum
 from cat.mad_hatter.decorators import plugin
-from pydantic import BaseModel, Field
-from pydantic.v1 import validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class ContextGuardianEnricherSettings(BaseModel):
@@ -101,42 +100,42 @@ class ContextGuardianEnricherSettings(BaseModel):
         description="Gemini model to try first when calling the API",
     )
 
-    @validator("handle_audio")
+    @field_validator("handle_audio")
     def validate_handle_audio(cls, v):
         """Validate that handle_audio is a valid boolean string"""
         if v.lower() not in ("true", "false"):
             raise ValueError("handle_audio must be 'true' or 'false'")
         return v.lower()
 
-    @validator("min_query_length")
+    @field_validator("min_query_length")
     def validate_min_query_length(cls, v):
         """Validate that min_query_length is non-negative"""
         if not v >= 0:
             raise ValueError("Minimum query length must be non-negative")
         return v
 
-    @validator("conversation_history_length")
+    @field_validator("conversation_history_length")
     def validate_conversation_history_length(cls, v):
         """Validate that conversation_history_length is within reasonable bounds"""
         if not 0 <= v <= 10:
             raise ValueError("Conversation history length must be between 0 and 10")
         return v
 
-    @validator("max_query_length")
+    @field_validator("max_query_length")
     def validate_max_query_length(cls, v):
         """Validate that max_query_length is within reasonable bounds"""
         if not 100 <= v <= 5000:
             raise ValueError("Maximum query length must be between 100 and 5000")
         return v
 
-    @validator("per_message_top_k")
+    @field_validator("per_message_top_k")
     def validate_per_message_top_k(cls, v):
         """Validate that per_message_top_k is within reasonable bounds"""
         if not 1 <= v <= 10:
             raise ValueError("Per-message top K must be between 1 and 10")
         return v
 
-    @validator("min_source_char")
+    @field_validator("min_source_char")
     def validate_min_source_char(cls, v):
         """Validate that min_source_char is non-negative"""
         if not v >= 0:
