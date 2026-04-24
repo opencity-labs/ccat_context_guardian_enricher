@@ -58,9 +58,6 @@ def is_same_language(text1: str, text2: str) -> bool:
     """
     lang1 = detect_language(text1)
     lang2 = detect_language(text2)
-    # log.warning(
-    #     f"Detected languages - Text 1: {lang1['language']} (confidence: {lang1['score']}), Text 2: {lang2['language']} (confidence: {lang2['score']})"
-    # )
     return lang1["language"] == lang2["language"]
 
 

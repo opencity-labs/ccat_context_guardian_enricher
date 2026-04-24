@@ -341,14 +341,25 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
         # Wrapped in try/except so that a failure in language detection or translation
         # does not prevent the rest of the hook (UTM enrichment, sources) from running.
         try:
-            is_same_lang = is_same_language(
-                cat.working_memory.user_message_json.text, message.text
-            )
+            # Strip the appended timestamp before language detection.
+            user_text = cat.working_memory.user_message_json.text
+            if "\n\ncurrent time:" in user_text:
+                user_text = user_text.split("\n\ncurrent time:")[0].strip()
+
+            # Use recent conversation history to build a richer language signal.
+            # A single short/mixed-word message (e.g. "Como iscrivo..." or "Male")
+            # can fool the detector; more context makes detection reliable.
+            recent_msgs = _get_user_messages_from_history(cat, 3)
+            if recent_msgs and recent_msgs[-1] != user_text:
+                recent_msgs.append(user_text)
+            user_context = " ".join(recent_msgs) if recent_msgs else user_text
+
+            is_same_lang = is_same_language(user_context, message.text)
 
             if not is_same_lang:
                 # log.info("Language mismatch detected. Translating response...")
                 message.text = translate_text(
-                    message.text, cat.working_memory.user_message_json.text, cat
+                    message.text, user_context, cat
                 )
         except Exception as e:
             log.error(
