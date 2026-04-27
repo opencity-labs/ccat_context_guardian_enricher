@@ -65,20 +65,28 @@ _STARTOF_TEXT_TAG = "<|startoftext|>"
 _ENDOF_TEXT_TAG = "<|endoftext|>"
 
 
-def translate_text(text_to_translate: str, reference_text: str, cat: Any) -> str:
+def translate_text(
+    text_to_translate: str, reference_text: str, cat: Any, current_message: str = ""
+) -> str:
     """
     Translates text_to_translate to the language of reference_text
     using the LLM configured in the Cheshire Cat framework.
     """
-    prompt = f"""Act as a translation engine. You will be provided with two texts, your task is to compare the language of the "Reference Text" with the "Text to Translate."
+    prompt = f"""Act as a translation engine. Determine the user's intended language and translate the "Text to Translate" if needed.
 - Maintain the original tone and formatting.
 - Output the result between {_STARTOF_TEXT_TAG} and {_ENDOF_TEXT_TAG}.
 - No explanations, headers, or notes.
 
-1. If both texts are in the same language: the output will be empty, so just: {_STARTOF_TEXT_TAG}{_ENDOF_TEXT_TAG};
-2. If the two languages differ: the output will be ONLY the translation of the "Text to Translate" into the language used in the "Reference Text", so {_STARTOF_TEXT_TAG}TRANSLATED TEXT{_ENDOF_TEXT_TAG}
+Determine the target language with this priority:
+1. Use "Last User Message" as the primary language indicator.
+2. If "Last User Message" is too short or ambiguous to identify a language clearly, infer it from "Conversation History".
 
-Reference Text for language: "{reference_text}"
+Translation rules:
+- If "Text to Translate" is already in the target language: output empty → {_STARTOF_TEXT_TAG}{_ENDOF_TEXT_TAG}
+- Otherwise: output ONLY the translation into the target language → {_STARTOF_TEXT_TAG}TRANSLATED TEXT{_ENDOF_TEXT_TAG}
+
+Last User Message: "{current_message}"
+Conversation History: "{reference_text}"
 Text to Translate: "{text_to_translate}" """
 
     try:

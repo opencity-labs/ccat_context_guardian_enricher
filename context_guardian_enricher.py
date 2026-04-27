@@ -359,7 +359,7 @@ def before_cat_sends_message(message: CatMessage, cat: StrayCat) -> CatMessage:
             if not is_same_lang:
                 # log.info("Language mismatch detected. Translating response...")
                 message.text = translate_text(
-                    message.text, user_context, cat
+                    message.text, user_context, cat, current_message=user_text
                 )
         except Exception as e:
             log.error(
