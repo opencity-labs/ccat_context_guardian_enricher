@@ -61,8 +61,8 @@ def is_same_language(text1: str, text2: str) -> bool:
     return lang1["language"] == lang2["language"]
 
 
-_STARTOF_TEXT_TAG = "<|startoftext|>"
-_ENDOF_TEXT_TAG = "<|endoftext|>"
+_STARTOF_TEXT_TAG = "<|starttranslated|>"
+_ENDOF_TEXT_TAG = "<|endtranslated|>"
 
 
 def translate_text(
