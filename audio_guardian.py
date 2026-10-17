@@ -5,7 +5,9 @@ from typing import Any, Dict, Optional
 from cat.log import log
 from cat.convo.messages import CatMessage
 
-_TRANSCRIPTION_MODEL = "gemini-2.5-pro"
+_TRANSCRIPTION_MODEL = "gemini-3.5-flash"
+# EU multi-region: Vertex AI guarantees ML processing within EU member states
+_TRANSCRIPTION_LOCATION = "eu"
 _TRANSCRIPTION_PROMPT = "Transcribe the following audio exactly as it is spoken. Do not add any description or timestamp."
 
 
@@ -62,23 +64,16 @@ def _parse_generate_content_response(result: Dict, source: str) -> Dict[str, Any
 
 
 def _get_vertex_ai_config(cat: Any) -> Optional[Dict[str, str]]:
-    """Check if Vertex AI is the selected LLM provider and return its config.
+    """Check if Vertex AI is the selected LLM provider and return its project.
 
-    Reads project and location directly from the instantiated ChatVertexAI
-    object on cat._llm, because the Vertex AI provider's get_llm_from_config
-    pops those keys from the TinyDB-cached dict during bootstrap.
+    Reads the project directly from the instantiated LLM on cat._llm, because
+    the Vertex AI provider's get_llm_from_config pops it from the TinyDB-cached
+    dict during bootstrap.
     """
     try:
-        from langchain_google_vertexai import ChatVertexAI
-
-        llm = cat._llm
-        if isinstance(llm, ChatVertexAI):
-            return {
-                "project_id": llm.project,
-                "location": llm.location,
-            }
-    except ImportError:
-        pass
+        project = getattr(cat._llm, "project", None)
+        if isinstance(project, str) and project:
+            return {"project_id": project, "location": _TRANSCRIPTION_LOCATION}
     except Exception as e:
         log.warning(
             json.dumps({"event": "vertex_ai_config_check_failed", "error": str(e)})
@@ -114,8 +109,13 @@ def transcribe_with_vertex_ai(
     if not access_token:
         return {"text": "", "usage": None}
 
+    host = (
+        f"aiplatform.{location}.rep.googleapis.com"
+        if location in ("eu", "us")
+        else f"{location}-aiplatform.googleapis.com"
+    )
     url = (
-        f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}"
+        f"https://{host}/v1/projects/{project_id}"
         f"/locations/{location}/publishers/google/models/{_TRANSCRIPTION_MODEL}:generateContent"
     )
     payload = _build_payload(parsed["mime_type"], parsed["data"])
